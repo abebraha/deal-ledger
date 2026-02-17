@@ -1,38 +1,323 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import {
+  deals, activities, meetings, commitments, settings,
+  reports, syncLogs, connections, conversations, messages,
+  type Deal, type InsertDeal,
+  type Activity, type InsertActivity,
+  type Meeting, type InsertMeeting,
+  type Commitment, type InsertCommitment,
+  type Report, type InsertReport,
+  type Connection,
+} from "@shared/schema";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Deals
+  getDeals(): Promise<Deal[]>;
+  getDeal(id: number): Promise<Deal | undefined>;
+  getDealByHubspotId(hubspotId: string): Promise<Deal | undefined>;
+  upsertDeal(deal: InsertDeal): Promise<Deal>;
+  
+  // Activities
+  getActivities(dealId?: number): Promise<Activity[]>;
+  upsertActivity(activity: InsertActivity): Promise<Activity>;
+  
+  // Meetings
+  getMeetings(dealId?: number): Promise<Meeting[]>;
+  upsertMeeting(meeting: InsertMeeting): Promise<Meeting>;
+  
+  // Commitments
+  getCommitments(status?: string): Promise<Commitment[]>;
+  upsertCommitment(commitment: InsertCommitment): Promise<Commitment>;
+  updateCommitmentStatus(id: number, status: string): Promise<void>;
+  
+  // Settings
+  getSetting(key: string): Promise<string | undefined>;
+  setSetting(key: string, value: string): Promise<void>;
+  getAllSettings(): Promise<Record<string, string>>;
+  
+  // Reports
+  getReports(type?: string): Promise<Report[]>;
+  getReport(id: number): Promise<Report | undefined>;
+  createReport(report: InsertReport): Promise<Report>;
+  markReportSent(id: number): Promise<void>;
+  
+  // Sync logs
+  createSyncLog(source: string, status: string, details?: string, recordsProcessed?: number): Promise<void>;
+  getLatestSyncLogs(): Promise<any[]>;
+  
+  // Connections
+  getConnection(service: string): Promise<Connection | undefined>;
+  upsertConnection(service: string, connected: boolean, config?: any): Promise<Connection>;
+  
+  // Conversations
+  getConversations(): Promise<any[]>;
+  getConversation(id: number): Promise<any | undefined>;
+  createConversation(title: string): Promise<any>;
+  deleteConversation(id: number): Promise<void>;
+  getMessages(conversationId: number): Promise<any[]>;
+  createMessage(conversationId: number, role: string, content: string): Promise<any>;
+
+  // Metrics (deterministic computations)
+  computeKPIs(startDate?: string, endDate?: string): Promise<any>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+class DatabaseStorage implements IStorage {
+  // ─── Deals ───
+  async getDeals() {
+    return db.select().from(deals).orderBy(desc(deals.updatedAt));
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getDeal(id: number) {
+    const [deal] = await db.select().from(deals).where(eq(deals.id, id));
+    return deal;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getDealByHubspotId(hubspotId: string) {
+    const [deal] = await db.select().from(deals).where(eq(deals.hubspotId, hubspotId));
+    return deal;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async upsertDeal(deal: InsertDeal) {
+    if (deal.hubspotId) {
+      const existing = await this.getDealByHubspotId(deal.hubspotId);
+      if (existing) {
+        const [updated] = await db.update(deals).set({ ...deal, updatedAt: new Date() }).where(eq(deals.hubspotId, deal.hubspotId)).returning();
+        return updated;
+      }
+    }
+    const [created] = await db.insert(deals).values(deal).returning();
+    return created;
+  }
+
+  // ─── Activities ───
+  async getActivities(dealId?: number) {
+    if (dealId) {
+      return db.select().from(activities).where(eq(activities.dealId, dealId)).orderBy(desc(activities.createdAt));
+    }
+    return db.select().from(activities).orderBy(desc(activities.createdAt));
+  }
+
+  async upsertActivity(activity: InsertActivity) {
+    if (activity.hubspotId) {
+      const [existing] = await db.select().from(activities).where(eq(activities.hubspotId, activity.hubspotId));
+      if (existing) {
+        const [updated] = await db.update(activities).set(activity).where(eq(activities.hubspotId, activity.hubspotId)).returning();
+        return updated;
+      }
+    }
+    const [created] = await db.insert(activities).values(activity).returning();
+    return created;
+  }
+
+  // ─── Meetings ───
+  async getMeetings(dealId?: number) {
+    if (dealId) {
+      return db.select().from(meetings).where(eq(meetings.dealId, dealId)).orderBy(desc(meetings.createdAt));
+    }
+    return db.select().from(meetings).orderBy(desc(meetings.createdAt));
+  }
+
+  async upsertMeeting(meeting: InsertMeeting) {
+    if (meeting.hubspotId) {
+      const [existing] = await db.select().from(meetings).where(eq(meetings.hubspotId, meeting.hubspotId));
+      if (existing) {
+        const [updated] = await db.update(meetings).set(meeting).where(eq(meetings.hubspotId, meeting.hubspotId)).returning();
+        return updated;
+      }
+    }
+    const [created] = await db.insert(meetings).values(meeting).returning();
+    return created;
+  }
+
+  // ─── Commitments ───
+  async getCommitments(status?: string) {
+    if (status) {
+      return db.select().from(commitments).where(eq(commitments.status, status)).orderBy(desc(commitments.createdAt));
+    }
+    return db.select().from(commitments).orderBy(desc(commitments.createdAt));
+  }
+
+  async upsertCommitment(commitment: InsertCommitment) {
+    const [created] = await db.insert(commitments).values(commitment).returning();
+    return created;
+  }
+
+  async updateCommitmentStatus(id: number, status: string) {
+    await db.update(commitments).set({ status }).where(eq(commitments.id, id));
+  }
+
+  // ─── Settings ───
+  async getSetting(key: string) {
+    const [setting] = await db.select().from(settings).where(eq(settings.key, key));
+    return setting?.value;
+  }
+
+  async setSetting(key: string, value: string) {
+    const [existing] = await db.select().from(settings).where(eq(settings.key, key));
+    if (existing) {
+      await db.update(settings).set({ value, updatedAt: new Date() }).where(eq(settings.key, key));
+    } else {
+      await db.insert(settings).values({ key, value });
+    }
+  }
+
+  async getAllSettings() {
+    const rows = await db.select().from(settings);
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  // ─── Reports ───
+  async getReports(type?: string) {
+    if (type) {
+      return db.select().from(reports).where(eq(reports.type, type)).orderBy(desc(reports.createdAt));
+    }
+    return db.select().from(reports).orderBy(desc(reports.createdAt));
+  }
+
+  async getReport(id: number) {
+    const [report] = await db.select().from(reports).where(eq(reports.id, id));
+    return report;
+  }
+
+  async createReport(report: InsertReport) {
+    const [created] = await db.insert(reports).values(report).returning();
+    return created;
+  }
+
+  async markReportSent(id: number) {
+    await db.update(reports).set({ sentAt: new Date() }).where(eq(reports.id, id));
+  }
+
+  // ─── Sync Logs ───
+  async createSyncLog(source: string, status: string, details?: string, recordsProcessed?: number) {
+    await db.insert(syncLogs).values({
+      source,
+      status,
+      details,
+      recordsProcessed: recordsProcessed ?? 0,
+      completedAt: status === "completed" || status === "error" ? new Date() : null,
+    });
+  }
+
+  async getLatestSyncLogs() {
+    return db.select().from(syncLogs).orderBy(desc(syncLogs.startedAt)).limit(20);
+  }
+
+  // ─── Connections ───
+  async getConnection(service: string) {
+    const [conn] = await db.select().from(connections).where(eq(connections.service, service));
+    return conn;
+  }
+
+  async upsertConnection(service: string, connected: boolean, config?: any) {
+    const [existing] = await db.select().from(connections).where(eq(connections.service, service));
+    if (existing) {
+      const [updated] = await db.update(connections)
+        .set({ connected, config, updatedAt: new Date() })
+        .where(eq(connections.service, service))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(connections).values({ service, connected, config }).returning();
+    return created;
+  }
+
+  // ─── Conversations ───
+  async getConversations() {
+    return db.select().from(conversations).orderBy(desc(conversations.createdAt));
+  }
+
+  async getConversation(id: number) {
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conv;
+  }
+
+  async createConversation(title: string) {
+    const [conv] = await db.insert(conversations).values({ title }).returning();
+    return conv;
+  }
+
+  async deleteConversation(id: number) {
+    await db.delete(messages).where(eq(messages.conversationId, id));
+    await db.delete(conversations).where(eq(conversations.id, id));
+  }
+
+  async getMessages(conversationId: number) {
+    return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+  }
+
+  async createMessage(conversationId: number, role: string, content: string) {
+    const [msg] = await db.insert(messages).values({ conversationId, role, content }).returning();
+    return msg;
+  }
+
+  // ─── Deterministic KPI Computation ───
+  async computeKPIs(startDate?: string, endDate?: string) {
+    const allDeals = await this.getDeals();
+    const allActivities = await this.getActivities();
+    const allMeetings = await this.getMeetings();
+    const allCommitments = await this.getCommitments();
+    const allSettings = await this.getAllSettings();
+
+    const closedWon = allDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
+    const openDeals = allDeals.filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost");
+    
+    const totalRevenue = closedWon.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const pipelineValue = openDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const weightedPipeline = openDeals.reduce((sum, d) => sum + (d.amount || 0) * ((d.probability || 0) / 100), 0);
+
+    const calls = allActivities.filter(a => a.type === "CALL" || a.type === "call");
+    const emails = allActivities.filter(a => a.type === "EMAIL" || a.type === "email");
+    const meetingsHeld = allMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
+
+    const pendingCommitments = allCommitments.filter(c => c.status === "pending");
+    const completedCommitments = allCommitments.filter(c => c.status === "completed");
+    const overdueCommitments = allCommitments.filter(c => {
+      if (c.status !== "pending" || !c.dueDate) return false;
+      return new Date(c.dueDate) < new Date();
+    });
+
+    const monthlyRevenueGoal = parseInt(allSettings.monthlyRevenueGoal || "100000");
+    const weeklyMeetingsGoal = parseInt(allSettings.weeklyMeetingsGoal || "15");
+    const weeklyOutboundGoal = parseInt(allSettings.weeklyOutboundGoal || "50");
+
+    return {
+      revenue: {
+        total: totalRevenue,
+        goal: monthlyRevenueGoal,
+        attainment: monthlyRevenueGoal > 0 ? Math.round((totalRevenue / monthlyRevenueGoal) * 100) : 0,
+      },
+      pipeline: {
+        total: pipelineValue,
+        weighted: weightedPipeline,
+        dealCount: openDeals.length,
+      },
+      activity: {
+        calls: calls.length,
+        emails: emails.length,
+        meetingsHeld: meetingsHeld.length,
+        meetingsGoal: weeklyMeetingsGoal,
+        outboundGoal: weeklyOutboundGoal,
+        totalOutbound: calls.length + emails.length,
+      },
+      commitments: {
+        total: allCommitments.length,
+        pending: pendingCommitments.length,
+        completed: completedCommitments.length,
+        overdue: overdueCommitments.length,
+      },
+      deals: {
+        total: allDeals.length,
+        closedWon: closedWon.length,
+        open: openDeals.length,
+      },
+    };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
