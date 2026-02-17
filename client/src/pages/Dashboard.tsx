@@ -2,17 +2,19 @@ import { Layout } from "@/components/layout/Layout";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { DealTable } from "@/components/dashboard/DealTable";
 import { CommitmentList } from "@/components/dashboard/CommitmentList";
-import { useApp } from "@/lib/context"; // Corrected import path
+import { useApp } from "@/lib/context";
 import { DollarSign, Phone, Users, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 export function Dashboard() {
-  const { deals, commitments, settings, isConnected } = useApp();
+  const { deals, commitments, kpis, isConnected, syncHubspot, syncFireflies, isSyncing } = useApp();
+  const [, navigate] = useLocation();
 
-  const totalRevenue = deals.reduce((acc, deal) => deal.stage === "Closed Won" ? acc + deal.amount : acc, 0);
-  const pipelineValue = deals.reduce((acc, deal) => deal.stage !== "Closed Won" && deal.stage !== "Closed Lost" ? acc + deal.amount : acc, 0);
-  const meetingsHeld = 12; // Mock metric from HubSpot
+  const handleRefresh = () => {
+    syncHubspot();
+    syncFireflies();
+  };
 
   if (!isConnected) {
     return (
@@ -25,7 +27,7 @@ export function Dashboard() {
             </p>
           </div>
           <Link href="/connections">
-            <Button size="lg">Connect Data Sources</Button>
+            <Button size="lg" data-testid="button-connect-sources">Connect Data Sources</Button>
           </Link>
         </div>
       </Layout>
@@ -38,36 +40,40 @@ export function Dashboard() {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight font-display">Executive Dashboard</h1>
           <div className="flex items-center gap-2">
-            <Button variant="outline">Refresh Data</Button>
-            <Button>Generate Report</Button>
+            <Button variant="outline" onClick={handleRefresh} disabled={isSyncing} data-testid="button-refresh-data">
+              {isSyncing ? "Syncing..." : "Refresh Data"}
+            </Button>
+            <Button onClick={() => navigate("/reports")} data-testid="button-generate-report">Generate Report</Button>
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <KPICard 
             title="Total Revenue" 
-            value={`$${totalRevenue.toLocaleString()}`} 
-            trend="+12.5%" 
-            trendUp={true} 
+            value={`$${(kpis?.revenue?.total ?? 0).toLocaleString()}`} 
+            trend={kpis?.revenue?.attainment != null ? `${kpis.revenue.attainment.toFixed(1)}% of goal` : undefined}
+            trendUp={kpis?.revenue?.attainment != null ? kpis.revenue.attainment >= 100 : undefined} 
             icon={DollarSign} 
           />
           <KPICard 
             title="Pipeline Value" 
-            value={`$${pipelineValue.toLocaleString()}`} 
-            trend="+2.1%" 
+            value={`$${(kpis?.pipeline?.total ?? 0).toLocaleString()}`} 
+            trend={kpis?.pipeline?.dealCount != null ? `${kpis.pipeline.dealCount} deals` : undefined}
             trendUp={true} 
             icon={Users} 
           />
           <KPICard 
             title="Meetings Held" 
-            value={meetingsHeld} 
-            trend="-4.5%" 
-            trendUp={false} 
+            value={kpis?.activity?.meetingsHeld ?? 0} 
+            trend={kpis?.activity?.meetingsGoal ? `Goal: ${kpis.activity.meetingsGoal}` : undefined}
+            trendUp={kpis?.activity ? kpis.activity.meetingsHeld >= kpis.activity.meetingsGoal : undefined} 
             icon={Phone} 
           />
           <KPICard 
             title="Open Commitments" 
-            value={commitments.filter(c => c.status !== "Completed").length} 
+            value={kpis?.commitments?.pending ?? 0} 
+            trend={kpis?.commitments?.overdue ? `${kpis.commitments.overdue} overdue` : undefined}
+            trendUp={kpis?.commitments?.overdue === 0}
             icon={CheckSquare} 
           />
         </div>

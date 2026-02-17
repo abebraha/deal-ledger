@@ -13,7 +13,7 @@ import { format } from "date-fns";
 export function DealTable({ deals }: { deals: Deal[] }) {
   const getBadgeVariant = (stage: string) => {
     switch (stage) {
-      case "Closed Won": return "default"; // dark/primary
+      case "Closed Won": return "default";
       case "Closed Lost": return "destructive";
       case "Discovery": return "secondary";
       default: return "outline";
@@ -35,15 +35,17 @@ export function DealTable({ deals }: { deals: Deal[] }) {
         </TableHeader>
         <TableBody>
           {deals.map((deal) => (
-            <TableRow key={deal.id}>
+            <TableRow key={deal.id} data-testid={`row-deal-${deal.id}`}>
               <TableCell className="font-medium">{deal.name}</TableCell>
-              <TableCell>{deal.companyName}</TableCell>
-              <TableCell>${deal.amount.toLocaleString()}</TableCell>
+              <TableCell>{deal.companyName ?? "—"}</TableCell>
+              <TableCell>${(deal.amount ?? 0).toLocaleString()}</TableCell>
               <TableCell>
                 <Badge variant={getBadgeVariant(deal.stage) as any}>{deal.stage}</Badge>
               </TableCell>
-              <TableCell>{deal.probability}%</TableCell>
-              <TableCell className="text-right">{format(new Date(deal.closeDate), "MMM d, yyyy")}</TableCell>
+              <TableCell>{deal.probability ?? 0}%</TableCell>
+              <TableCell className="text-right">
+                {deal.closeDate ? format(new Date(deal.closeDate), "MMM d, yyyy") : "—"}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

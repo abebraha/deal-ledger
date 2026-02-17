@@ -1,11 +1,15 @@
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useApp } from "@/lib/context"; // Corrected import path
-import { CheckCircle2, XCircle } from "lucide-react";
+import { useApp } from "@/lib/context";
+import { CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { format } from "date-fns";
 
 export function Connections() {
-  const { isConnected, settings, toggleConnection } = useApp();
+  const { connections, isConnected, toggleConnection, isTogglingConnection, syncHubspot, syncFireflies, isSyncing } = useApp();
+
+  const hubspotConnected = connections?.hubspot?.connected ?? false;
+  const firefliesConnected = connections?.fireflies?.connected ?? false;
 
   return (
     <Layout>
@@ -16,12 +20,11 @@ export function Connections() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* HubSpot Card */}
-          <Card className={`border-2 transition-all ${settings.connectedHubSpot ? "border-primary/20 bg-primary/5" : "border-border"}`}>
+          <Card className={`border-2 transition-all ${hubspotConnected ? "border-primary/20 bg-primary/5" : "border-border"}`}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>HubSpot CRM</span>
-                {settings.connectedHubSpot ? (
+                {hubspotConnected ? (
                   <CheckCircle2 className="text-green-500 h-6 w-6" />
                 ) : (
                   <XCircle className="text-muted-foreground h-6 w-6" />
@@ -34,23 +37,42 @@ export function Connections() {
                 <div className="text-sm text-muted-foreground">
                   Includes: Deals, Companies, Contacts, Emails, Calls, Meetings.
                 </div>
-                <Button 
-                  onClick={() => toggleConnection("hubspot")} 
-                  variant={settings.connectedHubSpot ? "outline" : "default"}
-                  className="w-full"
-                >
-                  {settings.connectedHubSpot ? "Disconnect HubSpot" : "Connect HubSpot"}
-                </Button>
+                {hubspotConnected && connections?.hubspot?.lastSyncAt && (
+                  <div className="text-xs text-muted-foreground" data-testid="text-hubspot-last-sync">
+                    Last synced: {format(new Date(connections.hubspot.lastSyncAt), "MMM d, yyyy h:mm a")}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => toggleConnection("hubspot")} 
+                    variant={hubspotConnected ? "outline" : "default"}
+                    className="flex-1"
+                    disabled={isTogglingConnection}
+                    data-testid="button-toggle-hubspot"
+                  >
+                    {hubspotConnected ? "Disconnect HubSpot" : "Connect HubSpot"}
+                  </Button>
+                  {hubspotConnected && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => syncHubspot()}
+                      disabled={isSyncing}
+                      data-testid="button-sync-hubspot"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Fireflies Card */}
-          <Card className={`border-2 transition-all ${settings.connectedFireflies ? "border-primary/20 bg-primary/5" : "border-border"}`}>
+          <Card className={`border-2 transition-all ${firefliesConnected ? "border-primary/20 bg-primary/5" : "border-border"}`}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Fireflies.ai</span>
-                {settings.connectedFireflies ? (
+                {firefliesConnected ? (
                   <CheckCircle2 className="text-green-500 h-6 w-6" />
                 ) : (
                   <XCircle className="text-muted-foreground h-6 w-6" />
@@ -63,13 +85,33 @@ export function Connections() {
                 <div className="text-sm text-muted-foreground">
                   Includes: Meeting Transcripts, Action Items, Decisions, Due Dates.
                 </div>
-                <Button 
-                  onClick={() => toggleConnection("fireflies")} 
-                  variant={settings.connectedFireflies ? "outline" : "default"}
-                  className="w-full"
-                >
-                  {settings.connectedFireflies ? "Disconnect Fireflies" : "Connect Fireflies"}
-                </Button>
+                {firefliesConnected && connections?.fireflies?.lastSyncAt && (
+                  <div className="text-xs text-muted-foreground" data-testid="text-fireflies-last-sync">
+                    Last synced: {format(new Date(connections.fireflies.lastSyncAt), "MMM d, yyyy h:mm a")}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => toggleConnection("fireflies")} 
+                    variant={firefliesConnected ? "outline" : "default"}
+                    className="flex-1"
+                    disabled={isTogglingConnection}
+                    data-testid="button-toggle-fireflies"
+                  >
+                    {firefliesConnected ? "Disconnect Fireflies" : "Connect Fireflies"}
+                  </Button>
+                  {firefliesConnected && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => syncFireflies()}
+                      disabled={isSyncing}
+                      data-testid="button-sync-fireflies"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

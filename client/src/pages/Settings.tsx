@@ -3,22 +3,36 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useApp } from "@/lib/context"; // Corrected import path
-import { useState } from "react";
+import { useApp } from "@/lib/context";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export function Settings() {
-  const { settings, updateSettings } = useApp();
+  const { settings, saveSettings, isSavingSettings } = useApp();
   const { toast } = useToast();
   
   const [formData, setFormData] = useState({
-    monthlyRevenueGoal: settings.monthlyRevenueGoal,
-    weeklyMeetingsGoal: settings.weeklyMeetingsGoal,
-    weeklyOutboundGoal: settings.weeklyOutboundGoal,
+    monthlyRevenueGoal: 100000,
+    weeklyMeetingsGoal: 15,
+    weeklyOutboundGoal: 50,
   });
 
+  useEffect(() => {
+    if (settings) {
+      setFormData({
+        monthlyRevenueGoal: settings.monthlyRevenueGoal ? parseInt(settings.monthlyRevenueGoal, 10) : 100000,
+        weeklyMeetingsGoal: settings.weeklyMeetingsGoal ? parseInt(settings.weeklyMeetingsGoal, 10) : 15,
+        weeklyOutboundGoal: settings.weeklyOutboundGoal ? parseInt(settings.weeklyOutboundGoal, 10) : 50,
+      });
+    }
+  }, [settings]);
+
   const handleSave = () => {
-    updateSettings(formData);
+    saveSettings({
+      monthlyRevenueGoal: String(formData.monthlyRevenueGoal),
+      weeklyMeetingsGoal: String(formData.weeklyMeetingsGoal),
+      weeklyOutboundGoal: String(formData.weeklyOutboundGoal),
+    });
     toast({
       title: "Settings Saved",
       description: "Your goals have been updated successfully.",
@@ -45,7 +59,8 @@ export function Settings() {
                 id="revenue" 
                 type="number" 
                 value={formData.monthlyRevenueGoal} 
-                onChange={(e) => setFormData({...formData, monthlyRevenueGoal: parseInt(e.target.value)})}
+                onChange={(e) => setFormData({...formData, monthlyRevenueGoal: parseInt(e.target.value) || 0})}
+                data-testid="input-revenue-goal"
               />
             </div>
             
@@ -56,7 +71,8 @@ export function Settings() {
                   id="meetings" 
                   type="number" 
                   value={formData.weeklyMeetingsGoal} 
-                  onChange={(e) => setFormData({...formData, weeklyMeetingsGoal: parseInt(e.target.value)})}
+                  onChange={(e) => setFormData({...formData, weeklyMeetingsGoal: parseInt(e.target.value) || 0})}
+                  data-testid="input-meetings-goal"
                 />
               </div>
               <div className="space-y-2">
@@ -65,12 +81,15 @@ export function Settings() {
                   id="outbound" 
                   type="number" 
                   value={formData.weeklyOutboundGoal} 
-                  onChange={(e) => setFormData({...formData, weeklyOutboundGoal: parseInt(e.target.value)})}
+                  onChange={(e) => setFormData({...formData, weeklyOutboundGoal: parseInt(e.target.value) || 0})}
+                  data-testid="input-outbound-goal"
                 />
               </div>
             </div>
 
-            <Button onClick={handleSave} className="w-full">Save Changes</Button>
+            <Button onClick={handleSave} className="w-full" disabled={isSavingSettings} data-testid="button-save-settings">
+              {isSavingSettings ? "Saving..." : "Save Changes"}
+            </Button>
           </CardContent>
         </Card>
       </div>
