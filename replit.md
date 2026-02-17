@@ -1,0 +1,55 @@
+# DealFlow - CEO Sales Intelligence App
+
+## Overview
+Private single-user web application for Abe (CEO) that connects to HubSpot and Fireflies, stores synced data locally in Postgres, computes deterministic sales metrics, and uses AI to generate weekly email updates and biweekly CEO scorecard reports.
+
+## Architecture
+- **Frontend**: React + Vite + TypeScript, using shadcn/ui components, wouter routing, @tanstack/react-query
+- **Backend**: Express.js API, Drizzle ORM with PostgreSQL
+- **AI**: OpenAI via Replit AI Integrations (env vars: AI_INTEGRATIONS_OPENAI_API_KEY, AI_INTEGRATIONS_OPENAI_BASE_URL)
+- **Sync**: HubSpot REST API, Fireflies GraphQL API
+- **Scheduler**: node-cron for hourly syncs, weekly emails (Mon 8AM), biweekly scorecards (every other Tue 8AM)
+
+## Key Design Decisions
+- **Deal-centric**: Deals are the spine; activities, meetings, commitments all link to deals
+- **Deterministic metrics**: KPIs computed in code (not by AI). AI only narrates and cites underlying records
+- **Single user**: No authentication needed, only Abe uses the app
+- **Commitment Ledger**: Fireflies action items compared against HubSpot KPIs in reports
+- **Email delivery**: Mocked with "send" button (no actual email sending)
+
+## Project Structure
+```
+shared/schema.ts          - Drizzle schema (deals, activities, meetings, commitments, settings, reports, sync_logs, connections, conversations, messages)
+server/db.ts              - Database connection
+server/storage.ts         - Storage layer with CRUD + deterministic KPI computation
+server/routes.ts          - All API endpoints
+server/services/
+  hubspot.ts              - HubSpot sync service
+  fireflies.ts            - Fireflies sync service  
+  metrics.ts              - Metrics computation for reports
+  ai-reports.ts           - AI report generation (weekly, biweekly, custom, streaming)
+  scheduler.ts            - Background cron jobs
+client/src/
+  lib/context.tsx          - React context with real API calls via react-query
+  pages/                   - Dashboard, Connections, Settings, Reports, ChatPage, DealsPage
+  components/dashboard/    - KPICard, DealTable, CommitmentList
+  components/layout/       - Layout, Sidebar
+```
+
+## API Endpoints
+- GET /api/kpis - Dashboard KPIs
+- GET/api/deals, GET /api/deals/:id - Deals
+- GET /api/activities, GET /api/meetings - Activities/Meetings
+- GET /api/commitments, PATCH /api/commitments/:id/status - Commitments
+- GET/POST /api/settings - Goals/targets
+- GET /api/connections, POST /api/connections/:service/connect|disconnect
+- POST /api/sync/hubspot, POST /api/sync/fireflies, GET /api/sync/logs
+- GET /api/reports, GET /api/reports/:id, POST /api/reports/generate/weekly|biweekly, POST /api/reports/:id/send
+- POST /api/chat - Streaming AI chat (SSE)
+
+## Required Secrets
+- HUBSPOT_API_KEY - HubSpot Private App token
+- FIREFLIES_API_KEY - Fireflies API key
+
+## Recent Changes
+- 2026-02-17: Initial full build - schema, storage, services, API routes, frontend connected to real APIs

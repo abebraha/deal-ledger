@@ -26,9 +26,7 @@ export function Dashboard() {
               Connect your data sources to start generating insights and tracking commitments.
             </p>
           </div>
-          <Link href="/connections">
-            <Button size="lg" data-testid="button-connect-sources">Connect Data Sources</Button>
-          </Link>
+          <Button size="lg" data-testid="button-connect-sources" onClick={() => navigate("/connections")}>Connect Data Sources</Button>
         </div>
       </Layout>
     );
