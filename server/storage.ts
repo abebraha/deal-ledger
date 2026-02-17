@@ -48,7 +48,7 @@ export interface IStorage {
   
   // Connections
   getConnection(service: string): Promise<Connection | undefined>;
-  upsertConnection(service: string, connected: boolean, config?: any): Promise<Connection>;
+  upsertConnection(service: string, connected: boolean, config?: any, updateLastSync?: boolean): Promise<Connection>;
   
   // Conversations
   getConversations(): Promise<any[]>;
@@ -214,16 +214,20 @@ class DatabaseStorage implements IStorage {
     return conn;
   }
 
-  async upsertConnection(service: string, connected: boolean, config?: any) {
+  async upsertConnection(service: string, connected: boolean, config?: any, updateLastSync?: boolean) {
     const [existing] = await db.select().from(connections).where(eq(connections.service, service));
+    const updateData: any = { connected, config, updatedAt: new Date() };
+    if (updateLastSync) {
+      updateData.lastSyncAt = new Date();
+    }
     if (existing) {
       const [updated] = await db.update(connections)
-        .set({ connected, config, updatedAt: new Date() })
+        .set(updateData)
         .where(eq(connections.service, service))
         .returning();
       return updated;
     }
-    const [created] = await db.insert(connections).values({ service, connected, config }).returning();
+    const [created] = await db.insert(connections).values({ service, connected, config, lastSyncAt: updateLastSync ? new Date() : null }).returning();
     return created;
   }
 

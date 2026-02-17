@@ -65,8 +65,9 @@ interface AppContextType {
   isLoading: boolean;
   saveSettings: (data: Record<string, string>) => void;
   isSavingSettings: boolean;
-  toggleConnection: (service: "hubspot" | "fireflies") => void;
-  isTogglingConnection: boolean;
+  connectService: (service: "hubspot" | "fireflies", apiKey: string) => Promise<any>;
+  disconnectService: (service: "hubspot" | "fireflies") => void;
+  isConnecting: boolean;
   syncHubspot: () => void;
   syncFireflies: () => void;
   isSyncing: boolean;
@@ -112,11 +113,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const toggleConnectionMutation = useMutation({
+  const connectServiceMutation = useMutation({
+    mutationFn: async ({ service, apiKey }: { service: "hubspot" | "fireflies"; apiKey: string }) => {
+      const res = await fetch(`/api/connections/${service}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Connection failed");
+      }
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/connections"] });
+      qc.invalidateQueries({ queryKey: ["/api/deals"] });
+      qc.invalidateQueries({ queryKey: ["/api/commitments"] });
+      qc.invalidateQueries({ queryKey: ["/api/kpis"] });
+    },
+  });
+
+  const disconnectServiceMutation = useMutation({
     mutationFn: async (service: "hubspot" | "fireflies") => {
-      const conn = service === "hubspot" ? connections?.hubspot : connections?.fireflies;
-      const action = conn?.connected ? "disconnect" : "connect";
-      await apiRequest("POST", `/api/connections/${service}/${action}`);
+      await apiRequest("POST", `/api/connections/${service}/disconnect`);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/connections"] });
@@ -176,8 +196,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoading,
       saveSettings: (data) => saveSettingsMutation.mutate(data),
       isSavingSettings: saveSettingsMutation.isPending,
-      toggleConnection: (service) => toggleConnectionMutation.mutate(service),
-      isTogglingConnection: toggleConnectionMutation.isPending,
+      connectService: (service, apiKey) => connectServiceMutation.mutateAsync({ service, apiKey }),
+      disconnectService: (service) => disconnectServiceMutation.mutate(service),
+      isConnecting: connectServiceMutation.isPending,
       syncHubspot: () => syncHubspotMutation.mutate(),
       syncFireflies: () => syncFirefliesMutation.mutate(),
       isSyncing,

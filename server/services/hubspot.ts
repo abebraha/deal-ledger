@@ -2,9 +2,16 @@ import { storage } from "../storage";
 import { log } from "../index";
 
 export async function syncHubSpot(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
-  const apiKey = process.env.HUBSPOT_API_KEY;
+  // Try database config first, then env var
+  let apiKey = process.env.HUBSPOT_API_KEY;
+  try {
+    const conn = await storage.getConnection("hubspot");
+    if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
+      apiKey = (conn.config as any).apiKey;
+    }
+  } catch (e) {}
   if (!apiKey) {
-    return { success: false, recordsProcessed: 0, error: "HUBSPOT_API_KEY not set" };
+    return { success: false, recordsProcessed: 0, error: "HubSpot is not connected. Please add your API key on the Connections page." };
   }
 
   let recordsProcessed = 0;
@@ -114,7 +121,8 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync meetings: ${e}`, "hubspot");
     }
 
-    await storage.upsertConnection("hubspot", true);
+    const existingConn = await storage.getConnection("hubspot");
+    await storage.upsertConnection("hubspot", true, existingConn?.config, true);
     await storage.createSyncLog("hubspot", "completed", `Synced ${recordsProcessed} records`, recordsProcessed);
 
     return { success: true, recordsProcessed };

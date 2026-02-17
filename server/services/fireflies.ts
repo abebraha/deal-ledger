@@ -4,9 +4,16 @@ import { log } from "../index";
 const FIREFLIES_API = "https://api.fireflies.ai/graphql";
 
 export async function syncFireflies(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
-  const apiKey = process.env.FIREFLIES_API_KEY;
+  // Try database config first, then env var
+  let apiKey = process.env.FIREFLIES_API_KEY;
+  try {
+    const conn = await storage.getConnection("fireflies");
+    if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
+      apiKey = (conn.config as any).apiKey;
+    }
+  } catch (e) {}
   if (!apiKey) {
-    return { success: false, recordsProcessed: 0, error: "FIREFLIES_API_KEY not set" };
+    return { success: false, recordsProcessed: 0, error: "Fireflies is not connected. Please add your API key on the Connections page." };
   }
 
   let recordsProcessed = 0;
@@ -91,7 +98,8 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
       }
     }
 
-    await storage.upsertConnection("fireflies", true);
+    const existingConn = await storage.getConnection("fireflies");
+    await storage.upsertConnection("fireflies", true, existingConn?.config, true);
     await storage.createSyncLog("fireflies", "completed", `Synced ${recordsProcessed} records`, recordsProcessed);
 
     return { success: true, recordsProcessed };

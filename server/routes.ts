@@ -112,7 +112,8 @@ export async function registerRoutes(
     try {
       const hubspot = await storage.getConnection("hubspot");
       const fireflies = await storage.getConnection("fireflies");
-      res.json({ hubspot, fireflies });
+      const sanitize = (conn: any) => conn ? { ...conn, config: undefined } : null;
+      res.json({ hubspot: sanitize(hubspot), fireflies: sanitize(fireflies) });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -124,8 +125,42 @@ export async function registerRoutes(
       if (service !== "hubspot" && service !== "fireflies") {
         return res.status(400).json({ error: "Invalid service" });
       }
-      await storage.upsertConnection(service, true);
-      res.json({ success: true });
+
+      const { apiKey } = req.body;
+      if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
+        return res.status(400).json({ error: "API key is required" });
+      }
+
+      // Validate the API key by making a test call
+      if (service === "hubspot") {
+        const testRes = await fetch("https://api.hubapi.com/crm/v3/objects/deals?limit=1", {
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+        });
+        if (!testRes.ok) {
+          const errText = await testRes.text();
+          return res.status(400).json({ error: `HubSpot API key validation failed (${testRes.status}). Please check your key.` });
+        }
+      } else {
+        const testRes = await fetch("https://api.fireflies.ai/graphql", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey.trim()}`,
+          },
+          body: JSON.stringify({ query: "{ user { email } }" }),
+        });
+        if (!testRes.ok) {
+          return res.status(400).json({ error: `Fireflies API key validation failed (${testRes.status}). Please check your key.` });
+        }
+        const testData = await testRes.json();
+        if (testData.errors) {
+          return res.status(400).json({ error: `Fireflies API error: ${testData.errors[0]?.message || "Unknown error"}` });
+        }
+      }
+
+      // Store the key in the connection config
+      await storage.upsertConnection(service, true, { apiKey: apiKey.trim() });
+      res.json({ success: true, message: `${service} connected successfully` });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -134,7 +169,7 @@ export async function registerRoutes(
   app.post("/api/connections/:service/disconnect", async (req, res) => {
     try {
       const service = req.params.service;
-      await storage.upsertConnection(service, false);
+      await storage.upsertConnection(service, false, null);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
