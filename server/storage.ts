@@ -3,13 +3,14 @@ import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import {
   deals, activities, meetings, settings,
   reports, syncLogs, connections, conversations, messages,
-  firefliesMeetings,
+  firefliesMeetings, salesReps,
   type Deal, type InsertDeal,
   type Activity, type InsertActivity,
   type Meeting, type InsertMeeting,
   type FirefliesMeeting, type InsertFirefliesMeeting,
   type Report, type InsertReport,
   type Connection,
+  type SalesRep, type InsertSalesRep,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -57,6 +58,13 @@ export interface IStorage {
   // Fireflies Meetings
   getFirefliesMeetings(): Promise<FirefliesMeeting[]>;
   upsertFirefliesMeeting(meeting: InsertFirefliesMeeting): Promise<FirefliesMeeting>;
+
+  // Sales Reps
+  getSalesReps(): Promise<SalesRep[]>;
+  getActiveSalesReps(): Promise<SalesRep[]>;
+  createSalesRep(rep: InsertSalesRep): Promise<SalesRep>;
+  updateSalesRep(id: number, rep: Partial<InsertSalesRep>): Promise<SalesRep | undefined>;
+  deleteSalesRep(id: number): Promise<void>;
 
   // Metrics (deterministic computations)
   computeKPIs(startDate?: string, endDate?: string): Promise<any>;
@@ -260,6 +268,29 @@ class DatabaseStorage implements IStorage {
     return created;
   }
 
+  // ─── Sales Reps ───
+  async getSalesReps() {
+    return db.select().from(salesReps).orderBy(salesReps.name);
+  }
+
+  async getActiveSalesReps() {
+    return db.select().from(salesReps).where(eq(salesReps.excluded, false)).orderBy(salesReps.name);
+  }
+
+  async createSalesRep(rep: InsertSalesRep) {
+    const [created] = await db.insert(salesReps).values(rep).returning();
+    return created;
+  }
+
+  async updateSalesRep(id: number, rep: Partial<InsertSalesRep>) {
+    const [updated] = await db.update(salesReps).set(rep).where(eq(salesReps.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSalesRep(id: number) {
+    await db.delete(salesReps).where(eq(salesReps.id, id));
+  }
+
   // ─── Deterministic KPI Computation ───
   async computeKPIs(startDate?: string, endDate?: string) {
     const allDeals = await this.getDeals();
@@ -313,15 +344,28 @@ class DatabaseStorage implements IStorage {
 export const storage = new DatabaseStorage();
 
 export async function cleanupNonRepData() {
-  const repPatterns = ["%deb%", "%dov%"];
-  
+  const reps = await storage.getActiveSalesReps();
+  const mappedIds = reps.filter(r => r.hubspotOwnerId).map(r => r.hubspotOwnerId!);
+
+  if (mappedIds.length > 0) {
+    return;
+  }
+
+  const repPatterns = reps.map(r => `%${r.name.toLowerCase()}%`);
+  if (repPatterns.length === 0) return;
+
+  const buildNotLike = (col: any) => {
+    const conditions = repPatterns.map(p => sql`LOWER(${col}) NOT LIKE ${p}`);
+    return sql.join(conditions, sql` AND `);
+  };
+
   await db.delete(deals).where(
-    sql`(${deals.owner} IS NULL OR (LOWER(${deals.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${deals.owner}) NOT LIKE ${repPatterns[1]}))`
+    sql`(${deals.owner} IS NULL OR (${buildNotLike(deals.owner)}))`
   );
   await db.delete(activities).where(
-    sql`(${activities.owner} IS NOT NULL AND LOWER(${activities.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${activities.owner}) NOT LIKE ${repPatterns[1]})`
+    sql`(${activities.owner} IS NOT NULL AND ${buildNotLike(activities.owner)})`
   );
   await db.delete(meetings).where(
-    sql`(${meetings.owner} IS NOT NULL AND LOWER(${meetings.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${meetings.owner}) NOT LIKE ${repPatterns[1]})`
+    sql`(${meetings.owner} IS NOT NULL AND ${buildNotLike(meetings.owner)})`
   );
 }

@@ -187,6 +187,65 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Sales Reps ───
+  app.get("/api/sales-reps", async (_req, res) => {
+    try {
+      const reps = await storage.getSalesReps();
+      res.json(reps);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const createRepSchema = z.object({
+    name: z.string().min(1, "Rep name is required").transform(s => s.trim()),
+    hubspotOwnerId: z.string().nullable().optional().default(null),
+    excluded: z.boolean().optional().default(false),
+  });
+
+  app.post("/api/sales-reps", async (req, res) => {
+    try {
+      const parsed = createRepSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid data" });
+      }
+      const rep = await storage.createSalesRep(parsed.data);
+      res.json(rep);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const updateRepSchema = z.object({
+    name: z.string().min(1).transform(s => s.trim()).optional(),
+    hubspotOwnerId: z.string().nullable().optional(),
+    excluded: z.boolean().optional(),
+  });
+
+  app.patch("/api/sales-reps/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const parsed = updateRepSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid data" });
+      }
+      const rep = await storage.updateSalesRep(id, parsed.data);
+      if (!rep) return res.status(404).json({ error: "Rep not found" });
+      res.json(rep);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sales-reps/:id", async (req, res) => {
+    try {
+      await storage.deleteSalesRep(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── Fireflies Meetings list (for report meeting selection) ───
   app.get("/api/fireflies-meetings", async (req, res) => {
     try {
@@ -279,9 +338,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reports/generate/biweekly", async (_req, res) => {
+  app.post("/api/reports/generate/biweekly", async (req, res) => {
     try {
-      const content = await generateBiweeklyScorecard();
+      const { meetingIds } = req.body || {};
+      const content = await generateBiweeklyScorecard(meetingIds);
       const kpis = await storage.computeKPIs();
       const report = await storage.createReport({
         type: "biweekly",

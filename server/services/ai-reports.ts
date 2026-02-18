@@ -107,13 +107,39 @@ Just 2-3 sentences of high-level pipeline context (total value, any notable chan
   return response.choices[0]?.message?.content || "Failed to generate report.";
 }
 
-export async function generateBiweeklyScorecard(): Promise<string> {
+export async function generateBiweeklyScorecard(selectedMeetingIds?: number[]): Promise<string> {
   const metrics = await computeMetricsForReport();
+  const allFirefliesMeetings = await storage.getFirefliesMeetings();
+
+  let selectedMeetings: typeof allFirefliesMeetings;
+  if (selectedMeetingIds && selectedMeetingIds.length > 0) {
+    selectedMeetings = allFirefliesMeetings.filter(m => selectedMeetingIds.includes(m.id));
+  } else {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    selectedMeetings = allFirefliesMeetings.filter(m => {
+      if (!m.meetingDate) return true;
+      return new Date(m.meetingDate) >= thirtyDaysAgo;
+    });
+  }
+
+  const meetingsData = selectedMeetings.map(m => ({
+    title: m.title,
+    date: m.meetingDate,
+    duration: m.duration,
+    participants: m.participants,
+    summary: m.summary,
+    outline: m.outline,
+    keywords: m.keywords,
+    transcriptSnippet: m.transcript ? m.transcript.substring(0, 4000) : null,
+  }));
 
   const prompt = `Generate a biweekly CEO scorecard report for Abe.
 
-DATA:
+PIPELINE & ACTIVITY DATA:
 ${JSON.stringify(metrics, null, 2)}
+
+SELECTED FIREFLIES MEETINGS (${meetingsData.length} meeting${meetingsData.length !== 1 ? "s" : ""} for context):
+${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings selected. Use available data for the Notable Activities section."}
 
 Format as a formal scorecard with markdown formatting:
 

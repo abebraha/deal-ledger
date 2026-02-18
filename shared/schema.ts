@@ -106,6 +106,15 @@ export const firefliesMeetings = pgTable("fireflies_meetings", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ─── Sales Reps (dynamic rep management) ───
+export const salesReps = pgTable("sales_reps", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  hubspotOwnerId: text("hubspot_owner_id"),
+  excluded: boolean("excluded").default(false).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 // ─── Settings (goals/targets) ───
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
@@ -154,6 +163,7 @@ export const insertActivitySchema = createInsertSchema(activities).omit({ id: tr
 export const insertMeetingSchema = createInsertSchema(meetings).omit({ id: true, createdAt: true });
 export const insertCommitmentSchema = createInsertSchema(commitments).omit({ id: true, createdAt: true });
 export const insertFirefliesMeetingSchema = createInsertSchema(firefliesMeetings).omit({ id: true, createdAt: true });
+export const insertSalesRepSchema = createInsertSchema(salesReps).omit({ id: true, createdAt: true });
 export const insertSettingsSchema = createInsertSchema(settings).omit({ id: true, updatedAt: true });
 export const insertReportSchema = createInsertSchema(reports).omit({ id: true, createdAt: true });
 export const insertSyncLogSchema = createInsertSchema(syncLogs).omit({ id: true, startedAt: true });
@@ -162,6 +172,8 @@ export const insertConversationSchema = createInsertSchema(conversations).omit({
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
 // ─── Types ───
+export type SalesRep = typeof salesReps.$inferSelect;
+export type InsertSalesRep = z.infer<typeof insertSalesRepSchema>;
 export type Deal = typeof deals.$inferSelect;
 export type InsertDeal = z.infer<typeof insertDealSchema>;
 export type Activity = typeof activities.$inferSelect;

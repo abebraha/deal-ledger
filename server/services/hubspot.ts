@@ -1,29 +1,17 @@
 import { storage } from "../storage";
 import { log } from "../index";
 
-const DEFAULT_REP_PATTERNS = ["deborah", "deb", "dov", "dovi"];
-
-async function getRepOwnerIds(): Promise<{ patterns: string[]; hubspotOwnerIds: string[] }> {
-  const allSettings = await storage.getAllSettings();
-  const hubspotOwnerIds: string[] = [];
-  const patterns = [...DEFAULT_REP_PATTERNS];
-
-  for (const [key, value] of Object.entries(allSettings)) {
-    if (key.startsWith("rep_hubspot_owner_") && value) {
-      hubspotOwnerIds.push(value);
-    }
-  }
-
-  return { patterns, hubspotOwnerIds };
+async function getActiveRepConfig(): Promise<{ hubspotOwnerIds: string[]; repNames: string[] }> {
+  const reps = await storage.getActiveSalesReps();
+  const hubspotOwnerIds = reps.filter(r => r.hubspotOwnerId).map(r => r.hubspotOwnerId!);
+  const repNames = reps.map(r => r.name.toLowerCase());
+  return { hubspotOwnerIds, repNames };
 }
 
-function isRepOwner(ownerName: string | null | undefined, ownerId?: string | null, mappedOwnerIds?: string[]): boolean {
-  if (mappedOwnerIds && mappedOwnerIds.length > 0 && ownerId) {
-    return mappedOwnerIds.includes(ownerId);
-  }
-  if (!ownerName) return false;
+function isRepOwnerByName(ownerName: string | null | undefined, repNames: string[]): boolean {
+  if (!ownerName || repNames.length === 0) return false;
   const lower = ownerName.toLowerCase().trim();
-  return DEFAULT_REP_PATTERNS.some(rep => lower.includes(rep));
+  return repNames.some(rep => lower.includes(rep));
 }
 
 export async function syncHubSpot(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
@@ -57,7 +45,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync owners: ${e}`, "hubspot");
     }
 
-    const { hubspotOwnerIds: mappedOwnerIds } = await getRepOwnerIds();
+    const { hubspotOwnerIds: mappedOwnerIds, repNames } = await getActiveRepConfig();
 
     // Sync Deals - paginate through all
     let hasMore = true;
@@ -80,7 +68,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
 
         if (mappedOwnerIds.length > 0) {
           if (!ownerId || !mappedOwnerIds.includes(ownerId)) continue;
-        } else if (!isRepOwner(ownerName)) {
+        } else if (!isRepOwnerByName(ownerName, repNames)) {
           continue;
         }
 
@@ -118,7 +106,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
             const ownerName = engOwnerId ? ownerMap[engOwnerId] : null;
             if (mappedOwnerIds.length > 0) {
               if (!engOwnerId || !mappedOwnerIds.includes(engOwnerId)) continue;
-            } else if (ownerName && !isRepOwner(ownerName)) {
+            } else if (!isRepOwnerByName(ownerName, repNames)) {
               continue;
             }
 
@@ -153,7 +141,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
           const ownerName = mtgOwnerId ? ownerMap[mtgOwnerId] : null;
           if (mappedOwnerIds.length > 0) {
             if (!mtgOwnerId || !mappedOwnerIds.includes(mtgOwnerId)) continue;
-          } else if (ownerName && !isRepOwner(ownerName)) {
+          } else if (!isRepOwnerByName(ownerName, repNames)) {
             continue;
           }
 
@@ -226,7 +214,9 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
 
     const existingConn = await storage.getConnection("hubspot");
     await storage.upsertConnection("hubspot", true, existingConn?.config, true);
-    await storage.createSyncLog("hubspot", "completed", `Synced ${recordsProcessed} records (Deb & Dovi only)`, recordsProcessed);
+    const reps = await storage.getActiveSalesReps();
+    const repNamesList = reps.map(r => r.name).join(", ") || "no reps configured";
+    await storage.createSyncLog("hubspot", "completed", `Synced ${recordsProcessed} records (${repNamesList})`, recordsProcessed);
 
     return { success: true, recordsProcessed };
   } catch (error: any) {

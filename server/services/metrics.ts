@@ -20,7 +20,10 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
       hubspotUrl: d.hubspotUrl,
     }));
 
-  const repNames = extractRepNames(allDeals, allActivities);
+  const configuredReps = await storage.getActiveSalesReps();
+  const repNames = configuredReps.length > 0
+    ? configuredReps.map(r => r.name)
+    : extractRepNamesFromData(allDeals, allActivities);
 
   const byRep: Record<string, any> = {};
   for (const rep of repNames) {
@@ -66,30 +69,19 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
   };
 }
 
-function extractRepNames(deals: any[], activities: any[]): string[] {
+function extractRepNamesFromData(deals: any[], activities: any[]): string[] {
   const owners = new Set<string>();
-  for (const d of deals) { if (d.owner) owners.add(normalizeRepName(d.owner)); }
-  for (const a of activities) { if (a.owner) owners.add(normalizeRepName(a.owner)); }
-
+  for (const d of deals) { if (d.owner) owners.add(d.owner.trim()); }
+  for (const a of activities) { if (a.owner) owners.add(a.owner.trim()); }
   const reps = Array.from(owners).filter(name => name.length > 0);
-  
-  if (reps.length === 0) {
-    return ["Deb", "Dovi"];
-  }
-  return reps.sort();
-}
-
-function normalizeRepName(name: string): string {
-  if (!name) return "";
-  const lower = name.toLowerCase().trim();
-  if (lower.includes("deborah") || lower.includes("deb")) return "Deb";
-  if (lower.includes("dov") || lower.includes("dovi")) return "Dovi";
-  return name.trim();
+  return reps.length > 0 ? reps.sort() : [];
 }
 
 function matchesRep(owner: string | null | undefined, rep: string): boolean {
   if (!owner) return false;
-  return normalizeRepName(owner) === rep;
+  const lower = owner.toLowerCase().trim();
+  const repLower = rep.toLowerCase();
+  return lower.includes(repLower) || lower === repLower;
 }
 
 function countByType(items: any[]): Record<string, number> {

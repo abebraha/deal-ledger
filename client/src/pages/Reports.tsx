@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, Mail, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, CalendarDays } from "lucide-react";
+import { FileText, Mail, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, CalendarDays, BarChart3 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
@@ -36,7 +36,8 @@ export function Reports() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [selectedMeetingIds, setSelectedMeetingIds] = useState<number[]>([]);
+  const [weeklyMeetingIds, setWeeklyMeetingIds] = useState<number[]>([]);
+  const [biweeklyMeetingIds, setBiweeklyMeetingIds] = useState<number[]>([]);
 
   const { data: reports = [], isLoading } = useQuery<Report[]>({
     queryKey: ["/api/reports"],
@@ -52,7 +53,7 @@ export function Reports() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/reports"] });
-      setSelectedMeetingIds([]);
+      setWeeklyMeetingIds([]);
       toast({ title: "Report Generated", description: "Meeting recap has been generated." });
     },
     onError: (err: Error) => {
@@ -61,11 +62,12 @@ export function Reports() {
   });
 
   const generateBiweekly = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", "/api/reports/generate/biweekly");
+    mutationFn: async (meetingIds: number[]) => {
+      await apiRequest("POST", "/api/reports/generate/biweekly", { meetingIds });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/reports"] });
+      setBiweeklyMeetingIds([]);
       toast({ title: "Report Generated", description: "Bi-weekly scorecard has been generated." });
     },
     onError: (err: Error) => {
@@ -92,25 +94,87 @@ export function Reports() {
     window.open(`/api/reports/${report.id}/pdf`, "_blank");
   };
 
-  const toggleMeeting = (id: number) => {
-    setSelectedMeetingIds(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
-
-  const selectAll = () => {
-    if (selectedMeetingIds.length === firefliesMeetings.length) {
-      setSelectedMeetingIds([]);
-    } else {
-      setSelectedMeetingIds(firefliesMeetings.map(m => m.id));
-    }
-  };
-
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return "";
     const mins = Math.round(seconds / 60);
     return `${mins}m`;
   };
+
+  const MeetingSelector = ({
+    selectedIds,
+    onToggle,
+    onSelectAll,
+    label,
+    testIdPrefix,
+  }: {
+    selectedIds: number[];
+    onToggle: (id: number) => void;
+    onSelectAll: () => void;
+    label: string;
+    testIdPrefix: string;
+  }) => (
+    <div className="space-y-3">
+      {meetingsLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading meetings...
+        </div>
+      ) : firefliesMeetings.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4" data-testid={`text-no-meetings-${testIdPrefix}`}>
+          No meetings found from the last 30 days. Sync Fireflies to pull in your recordings.
+        </p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <button
+              onClick={onSelectAll}
+              className="text-sm text-primary hover:underline"
+              data-testid={`button-select-all-${testIdPrefix}`}
+            >
+              {selectedIds.length === firefliesMeetings.length ? "Deselect all" : "Select all"}
+            </button>
+            <span className="text-sm text-muted-foreground">
+              {selectedIds.length} of {firefliesMeetings.length} selected
+            </span>
+          </div>
+          <div className="border rounded-md divide-y max-h-[250px] overflow-y-auto">
+            {firefliesMeetings.map(meeting => (
+              <label
+                key={meeting.id}
+                className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors"
+                data-testid={`${testIdPrefix}-meeting-item-${meeting.id}`}
+              >
+                <Checkbox
+                  checked={selectedIds.includes(meeting.id)}
+                  onCheckedChange={() => onToggle(meeting.id)}
+                  data-testid={`${testIdPrefix}-checkbox-meeting-${meeting.id}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{meeting.title || "Untitled Meeting"}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {meeting.meetingDate && (
+                      <span>{format(new Date(meeting.meetingDate), "MMM d, yyyy 'at' h:mm a")}</span>
+                    )}
+                    {meeting.duration && (
+                      <>
+                        <span>·</span>
+                        <span>{formatDuration(meeting.duration)}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {meeting.participants && (
+                  <span className="text-xs text-muted-foreground hidden sm:block max-w-[200px] truncate">
+                    {meeting.participants}
+                  </span>
+                )}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <Layout>
@@ -120,112 +184,77 @@ export function Reports() {
             <h1 className="text-3xl font-bold tracking-tight font-display" data-testid="text-reports-title">Reports</h1>
             <p className="text-muted-foreground mt-2">Generate AI-powered sales reports from your meeting recordings.</p>
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => generateBiweekly.mutate()}
-              disabled={isGenerating}
-              data-testid="button-generate-biweekly"
-            >
-              {generateBiweekly.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Bi-Weekly Scorecard
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => refetchMeetings()}
+            disabled={meetingsLoading}
+            data-testid="button-refresh-meetings"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${meetingsLoading ? "animate-spin" : ""}`} />
+            Refresh Meetings
+          </Button>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5" />
-                  Weekly Meeting Recap
-                </CardTitle>
-                <CardDescription className="mt-1">Select which meetings to include in the recap, then generate.</CardDescription>
-              </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Weekly Meeting Recap
+              </CardTitle>
+              <CardDescription>Select meetings to include, then generate a recap focused on discussions and action items.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MeetingSelector
+                selectedIds={weeklyMeetingIds}
+                onToggle={(id) => setWeeklyMeetingIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])}
+                onSelectAll={() => setWeeklyMeetingIds(prev => prev.length === firefliesMeetings.length ? [] : firefliesMeetings.map(m => m.id))}
+                label="Weekly"
+                testIdPrefix="weekly"
+              />
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => refetchMeetings()}
-                disabled={meetingsLoading}
-                data-testid="button-refresh-meetings"
+                onClick={() => generateWeekly.mutate(weeklyMeetingIds)}
+                disabled={isGenerating || weeklyMeetingIds.length === 0}
+                className="w-full mt-3"
+                data-testid="button-generate-weekly"
               >
-                <RefreshCw className={`h-4 w-4 mr-1 ${meetingsLoading ? "animate-spin" : ""}`} />
-                Refresh
+                {generateWeekly.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Generate Recap ({weeklyMeetingIds.length} meeting{weeklyMeetingIds.length !== 1 ? "s" : ""})
               </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {meetingsLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading meetings...
-              </div>
-            ) : firefliesMeetings.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4" data-testid="text-no-meetings">
-                No meetings found from the last 30 days. Sync Fireflies to pull in your recordings.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={selectAll}
-                    className="text-sm text-primary hover:underline"
-                    data-testid="button-select-all-meetings"
-                  >
-                    {selectedMeetingIds.length === firefliesMeetings.length ? "Deselect all" : "Select all"}
-                  </button>
-                  <span className="text-sm text-muted-foreground">
-                    {selectedMeetingIds.length} of {firefliesMeetings.length} selected
-                  </span>
-                </div>
-                <div className="border rounded-md divide-y max-h-[300px] overflow-y-auto">
-                  {firefliesMeetings.map(meeting => (
-                    <label
-                      key={meeting.id}
-                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors"
-                      data-testid={`meeting-item-${meeting.id}`}
-                    >
-                      <Checkbox
-                        checked={selectedMeetingIds.includes(meeting.id)}
-                        onCheckedChange={() => toggleMeeting(meeting.id)}
-                        data-testid={`checkbox-meeting-${meeting.id}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{meeting.title || "Untitled Meeting"}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          {meeting.meetingDate && (
-                            <span>{format(new Date(meeting.meetingDate), "MMM d, yyyy 'at' h:mm a")}</span>
-                          )}
-                          {meeting.duration && (
-                            <>
-                              <span>·</span>
-                              <span>{formatDuration(meeting.duration)}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {meeting.participants && (
-                        <span className="text-xs text-muted-foreground hidden sm:block max-w-[200px] truncate">
-                          {meeting.participants}
-                        </span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-                <Button
-                  onClick={() => generateWeekly.mutate(selectedMeetingIds)}
-                  disabled={isGenerating || selectedMeetingIds.length === 0}
-                  className="w-full"
-                  data-testid="button-generate-weekly"
-                >
-                  {generateWeekly.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Generate Meeting Recap ({selectedMeetingIds.length} meeting{selectedMeetingIds.length !== 1 ? "s" : ""})
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Bi-Weekly Scorecard
+              </CardTitle>
+              <CardDescription>Select meetings for context, then generate a full pipeline and performance scorecard.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MeetingSelector
+                selectedIds={biweeklyMeetingIds}
+                onToggle={(id) => setBiweeklyMeetingIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])}
+                onSelectAll={() => setBiweeklyMeetingIds(prev => prev.length === firefliesMeetings.length ? [] : firefliesMeetings.map(m => m.id))}
+                label="Biweekly"
+                testIdPrefix="biweekly"
+              />
+              <Button
+                onClick={() => generateBiweekly.mutate(biweeklyMeetingIds)}
+                disabled={isGenerating}
+                variant="outline"
+                className="w-full mt-3"
+                data-testid="button-generate-biweekly"
+              >
+                {generateBiweekly.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Generate Scorecard
+                {biweeklyMeetingIds.length > 0 && ` (${biweeklyMeetingIds.length} meeting${biweeklyMeetingIds.length !== 1 ? "s" : ""})`}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
 
         <div>
           <h2 className="text-xl font-semibold font-display mb-4">Past Reports</h2>

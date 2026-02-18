@@ -41,8 +41,8 @@ client/src/
 - GET /api/kpis - Dashboard KPIs
 - GET/api/deals, GET /api/deals/:id - Deals
 - GET /api/activities, GET /api/meetings - Activities/Meetings
-- GET /api/commitments, PATCH /api/commitments/:id/status - Commitments
 - GET/POST /api/settings - Goals/targets
+- GET/POST /api/sales-reps, PATCH/DELETE /api/sales-reps/:id - Dynamic rep management
 - GET /api/connections, POST /api/connections/:service/connect|disconnect
 - POST /api/sync/hubspot, POST /api/sync/fireflies, GET /api/sync/logs
 - GET /api/reports, GET /api/reports/:id, GET /api/reports/:id/pdf, POST /api/reports/generate/weekly|biweekly, POST /api/reports/:id/send
@@ -53,8 +53,9 @@ client/src/
 - FIREFLIES_API_KEY - Fireflies API key
 
 ## Recent Changes
-- 2026-02-18: Rep mapping in Settings — map Deb/Dovi to HubSpot owner IDs via dropdowns; HubSpot sync uses mapped IDs when set, falls back to name pattern matching
-- 2026-02-18: Meeting selection for weekly reports — Reports page shows Fireflies meetings from last 30 days with checkboxes; user picks which meetings to include in each recap
+- 2026-02-18: Dynamic rep management — sales_reps table replaces hardcoded Deb/Dovi; add/remove reps in Settings, map each to HubSpot user, toggle exclude from data/reports
+- 2026-02-18: Meeting selection for BOTH report types — Reports page shows side-by-side weekly recap and biweekly scorecard cards, each with independent meeting selection checkboxes
+- 2026-02-18: HubSpot sync and metrics now driven by configured reps — no hardcoded names; cleanup function uses dynamic rep list
 - 2026-02-18: Weekly report redesigned as "Meeting Recap" — focused on selected Fireflies meetings (what was discussed, rep updates, action items) rather than duplicating HubSpot pipeline data; biweekly scorecard remains the full pipeline/metrics report
 - 2026-02-18: Commitment ledger feature fully removed from schema references, storage, routes, metrics, AI reports, and all frontend pages
 - 2026-02-18: Fireflies meetings now stored with full summaries, outlines, keywords, transcript snippets; AI reports include "Notable Activities & Context" section highlighting demos, presentations, internal projects per rep
