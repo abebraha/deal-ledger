@@ -47,6 +47,24 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
 
     const { hubspotOwnerIds: mappedOwnerIds, repNames } = await getActiveRepConfig();
 
+    // Fetch pipeline stage labels so we can map stage IDs to readable names
+    const stageMap: Record<string, string> = {};
+    try {
+      const pipelinesResponse = await fetch("https://api.hubapi.com/crm/v3/pipelines/deals", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (pipelinesResponse.ok) {
+        const pipelinesData = await pipelinesResponse.json();
+        for (const pipeline of pipelinesData.results || []) {
+          for (const stage of pipeline.stages || []) {
+            stageMap[stage.id] = stage.label;
+          }
+        }
+      }
+    } catch (e) {
+      log(`Warning: Could not fetch pipeline stages: ${e}`, "hubspot");
+    }
+
     // Sync Deals - paginate through all
     let hasMore = true;
     let after: string | undefined;
@@ -72,11 +90,14 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
           continue;
         }
 
+        const rawStage = deal.properties.dealstage || "unknown";
+        const stageLabel = stageMap[rawStage] || rawStage;
+
         await storage.upsertDeal({
           hubspotId: deal.id,
           name: deal.properties.dealname || "Untitled Deal",
           amount: parseFloat(deal.properties.amount) || 0,
-          stage: deal.properties.dealstage || "unknown",
+          stage: stageLabel,
           owner: ownerName || null,
           closeDate: deal.properties.closedate || null,
           lastActivityDate: deal.properties.hs_lastmodifieddate || null,
@@ -93,35 +114,42 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       }
     }
 
-    // Sync Engagements (activities) - only for reps
+    // Sync Engagements (activities) - paginate through all
     try {
       for (const engType of ["calls", "emails", "notes", "tasks"]) {
-        const engResponse = await fetch(`https://api.hubapi.com/crm/v3/objects/${engType}?limit=50&properties=hs_timestamp,hs_call_title,hs_email_subject,hs_note_body,hs_task_subject,hubspot_owner_id`, {
-          headers: { Authorization: `Bearer ${apiKey}` },
-        });
-        if (engResponse.ok) {
-          const engData = await engResponse.json();
-          for (const eng of engData.results || []) {
-            const engOwnerId = eng.properties.hubspot_owner_id || null;
-            const ownerName = engOwnerId ? ownerMap[engOwnerId] : null;
-            if (mappedOwnerIds.length > 0) {
-              if (!engOwnerId || !mappedOwnerIds.includes(engOwnerId)) continue;
-            } else if (!isRepOwnerByName(ownerName, repNames)) {
-              continue;
-            }
+        let engHasMore = true;
+        let engAfter: string | undefined;
+        while (engHasMore) {
+          const engUrl = `https://api.hubapi.com/crm/v3/objects/${engType}?limit=100&properties=hs_timestamp,hs_call_title,hs_email_subject,hs_note_body,hs_task_subject,hubspot_owner_id${engAfter ? `&after=${engAfter}` : ""}`;
+          const engResponse = await fetch(engUrl, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          if (engResponse.ok) {
+            const engData = await engResponse.json();
+            for (const eng of engData.results || []) {
+              const engOwnerId = eng.properties.hubspot_owner_id || null;
+              const ownerName = engOwnerId ? ownerMap[engOwnerId] : null;
 
-            const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
-            const body = eng.properties.hs_note_body || "";
-            await storage.upsertActivity({
-              hubspotId: eng.id,
-              type: engType.toUpperCase().replace(/S$/, ""),
-              subject: subject,
-              body: body,
-              owner: ownerName || null,
-              activityDate: eng.properties.hs_timestamp || eng.createdAt,
-              hubspotUrl: `https://app.hubspot.com/contacts/activity/${eng.id}`,
-            });
-            recordsProcessed++;
+              const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
+              const body = eng.properties.hs_note_body || "";
+              await storage.upsertActivity({
+                hubspotId: eng.id,
+                type: engType.toUpperCase().replace(/S$/, ""),
+                subject: subject,
+                body: body,
+                owner: ownerName || null,
+                activityDate: eng.properties.hs_timestamp || eng.createdAt,
+                hubspotUrl: `https://app.hubspot.com/contacts/activity/${eng.id}`,
+              });
+              recordsProcessed++;
+            }
+            if (engData.paging?.next?.after) {
+              engAfter = engData.paging.next.after;
+            } else {
+              engHasMore = false;
+            }
+          } else {
+            engHasMore = false;
           }
         }
       }
@@ -129,32 +157,39 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync activities: ${e}`, "hubspot");
     }
 
-    // Sync Meetings - only for reps
+    // Sync Meetings - paginate through all
     try {
-      const meetingsResponse = await fetch("https://api.hubapi.com/crm/v3/objects/meetings?limit=50&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id", {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (meetingsResponse.ok) {
-        const meetingsData = await meetingsResponse.json();
-        for (const mtg of meetingsData.results || []) {
-          const mtgOwnerId = mtg.properties.hubspot_owner_id || null;
-          const ownerName = mtgOwnerId ? ownerMap[mtgOwnerId] : null;
-          if (mappedOwnerIds.length > 0) {
-            if (!mtgOwnerId || !mappedOwnerIds.includes(mtgOwnerId)) continue;
-          } else if (!isRepOwnerByName(ownerName, repNames)) {
-            continue;
-          }
+      let mtgHasMore = true;
+      let mtgAfter: string | undefined;
+      while (mtgHasMore) {
+        const mtgUrl = `https://api.hubapi.com/crm/v3/objects/meetings?limit=100&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id${mtgAfter ? `&after=${mtgAfter}` : ""}`;
+        const meetingsResponse = await fetch(mtgUrl, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (meetingsResponse.ok) {
+          const meetingsData = await meetingsResponse.json();
+          for (const mtg of meetingsData.results || []) {
+            const mtgOwnerId = mtg.properties.hubspot_owner_id || null;
+            const ownerName = mtgOwnerId ? ownerMap[mtgOwnerId] : null;
 
-          await storage.upsertMeeting({
-            hubspotId: mtg.id,
-            title: mtg.properties.hs_meeting_title || "Untitled Meeting",
-            startTime: mtg.properties.hs_meeting_start_time || null,
-            endTime: mtg.properties.hs_meeting_end_time || null,
-            outcome: mtg.properties.hs_meeting_outcome || null,
-            owner: ownerName || null,
-            hubspotUrl: `https://app.hubspot.com/contacts/meetings/${mtg.id}`,
-          });
-          recordsProcessed++;
+            await storage.upsertMeeting({
+              hubspotId: mtg.id,
+              title: mtg.properties.hs_meeting_title || "Untitled Meeting",
+              startTime: mtg.properties.hs_meeting_start_time || null,
+              endTime: mtg.properties.hs_meeting_end_time || null,
+              outcome: mtg.properties.hs_meeting_outcome || null,
+              owner: ownerName || null,
+              hubspotUrl: `https://app.hubspot.com/contacts/meetings/${mtg.id}`,
+            });
+            recordsProcessed++;
+          }
+          if (meetingsData.paging?.next?.after) {
+            mtgAfter = meetingsData.paging.next.after;
+          } else {
+            mtgHasMore = false;
+          }
+        } else {
+          mtgHasMore = false;
         }
       }
     } catch (e) {

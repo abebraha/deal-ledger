@@ -47,8 +47,9 @@ export async function registerRoutes(
   app.get("/api/activities", async (req, res) => {
     try {
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
       const allActivities = await storage.getActivities(dealId);
-      res.json(allActivities);
+      res.json(allActivities.slice(0, limit));
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

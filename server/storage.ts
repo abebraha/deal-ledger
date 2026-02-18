@@ -362,10 +362,5 @@ export async function cleanupNonRepData() {
   await db.delete(deals).where(
     sql`(${deals.owner} IS NULL OR (${buildNotLike(deals.owner)}))`
   );
-  await db.delete(activities).where(
-    sql`(${activities.owner} IS NOT NULL AND ${buildNotLike(activities.owner)})`
-  );
-  await db.delete(meetings).where(
-    sql`(${meetings.owner} IS NOT NULL AND ${buildNotLike(meetings.owner)})`
-  );
+  
 }

@@ -4,10 +4,15 @@ import { DealTable } from "@/components/dashboard/DealTable";
 import { useApp } from "@/lib/context";
 import { DollarSign, Phone, Users, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { Link, useLocation } from "wouter";
+import { format } from "date-fns";
 
 export function Dashboard() {
-  const { deals, kpis, isConnected, syncHubspot, syncFireflies, isSyncing } = useApp();
+  const { deals, activities, kpis, isConnected, syncHubspot, syncFireflies, isSyncing } = useApp();
   const [, navigate] = useLocation();
 
   const handleRefresh = () => {
@@ -78,6 +83,49 @@ export function Dashboard() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold font-display">Active Deals</h2>
           <DealTable deals={deals.filter(d => d.stage !== "Closed Lost" && d.stage !== "Closed Won" && d.stage !== "closedlost" && d.stage !== "closedwon")} />
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold font-display">Recent Activity</h2>
+          <div className="rounded-md border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead className="text-right">Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activities.slice(0, 25).map((activity) => (
+                  <TableRow key={activity.id} data-testid={`row-activity-${activity.id}`}>
+                    <TableCell>
+                      <Badge variant="outline" data-testid={`badge-activity-type-${activity.id}`}>{activity.type}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium" data-testid={`text-activity-subject-${activity.id}`}>
+                      {activity.hubspotUrl ? (
+                        <a href={activity.hubspotUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                          {activity.subject}
+                        </a>
+                      ) : activity.subject}
+                    </TableCell>
+                    <TableCell data-testid={`text-activity-owner-${activity.id}`}>{activity.owner ?? "—"}</TableCell>
+                    <TableCell className="text-right" data-testid={`text-activity-date-${activity.id}`}>
+                      {activity.activityDate ? format(new Date(activity.activityDate), "MMM d, yyyy") : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {activities.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      No activities synced yet. Sync HubSpot to pull in activity data.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
     </Layout>

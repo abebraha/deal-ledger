@@ -26,6 +26,19 @@ export interface KPIs {
   deals: { total: number; closedWon: number; open: number };
 }
 
+export interface Activity {
+  id: number;
+  hubspotId: string | null;
+  dealId: number | null;
+  type: string;
+  subject: string;
+  body: string | null;
+  owner: string | null;
+  activityDate: string | null;
+  hubspotUrl: string | null;
+  createdAt: string;
+}
+
 export interface ConnectionInfo {
   service: string;
   connected: boolean;
@@ -40,6 +53,7 @@ export interface ConnectionsData {
 
 interface AppContextType {
   deals: Deal[];
+  activities: Activity[];
   settings: Record<string, string>;
   kpis: KPIs | null;
   connections: ConnectionsData | null;
@@ -65,6 +79,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     queryKey: ["/api/deals"],
   });
 
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery<Activity[]>({
+    queryKey: ["/api/activities"],
+  });
+
   const { data: kpis = null, isLoading: kpisLoading } = useQuery<KPIs>({
     queryKey: ["/api/kpis"],
   });
@@ -78,7 +96,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const isConnected = !!(connections?.hubspot?.connected && connections?.fireflies?.connected);
-  const isLoading = dealsLoading || kpisLoading || settingsLoading || connectionsLoading;
+  const isLoading = dealsLoading || activitiesLoading || kpisLoading || settingsLoading || connectionsLoading;
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: Record<string, string>) => {
@@ -125,6 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/deals"] });
+      qc.invalidateQueries({ queryKey: ["/api/activities"] });
       qc.invalidateQueries({ queryKey: ["/api/kpis"] });
       qc.invalidateQueries({ queryKey: ["/api/connections"] });
     },
@@ -142,6 +161,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refetchAll = () => {
     qc.invalidateQueries({ queryKey: ["/api/deals"] });
+    qc.invalidateQueries({ queryKey: ["/api/activities"] });
     qc.invalidateQueries({ queryKey: ["/api/kpis"] });
     qc.invalidateQueries({ queryKey: ["/api/settings"] });
     qc.invalidateQueries({ queryKey: ["/api/connections"] });
@@ -152,6 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       deals,
+      activities,
       settings,
       kpis,
       connections,
