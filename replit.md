@@ -53,6 +53,7 @@ client/src/
 - FIREFLIES_API_KEY - Fireflies API key
 
 ## Recent Changes
+- 2026-02-18: Fixed LinkedIn message sync — Communications API channel type filter corrected from "LINKEDIN" to "LINKEDIN_MESSAGE"; removed incorrect note-body heuristic; all 66 LinkedIn messages now properly synced from Deb
 - 2026-02-18: LinkedIn message syncing from HubSpot Communications API; outbound KPI now includes calls + emails + LinkedIn messages; report prompts emphasize outreach actions breakdown per rep
 - 2026-02-18: Report metrics now filtered by period (7 days for weekly, 14 days for biweekly) instead of counting all historical activity
 - 2026-02-18: HubSpot sync now resolves owner IDs to configured rep names (e.g., "Dov rovt" → "Dovi"), fixing missing data for reps whose HubSpot names didn't match their configured names
