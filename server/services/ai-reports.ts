@@ -29,7 +29,9 @@ RULES:
 - Use --- horizontal rules between major sections.`;
 
 export async function generateWeeklyEmail(selectedMeetingIds?: number[]): Promise<string> {
-  const metrics = await computeMetricsForReport();
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86400000);
+  const metrics = await computeMetricsForReport(weekAgo.toISOString(), now.toISOString());
   const allFirefliesMeetings = await storage.getFirefliesMeetings();
 
   let selectedMeetings: typeof allFirefliesMeetings;
@@ -117,7 +119,9 @@ STYLE RULES:
 }
 
 export async function generateBiweeklyScorecard(selectedMeetingIds?: number[]): Promise<string> {
-  const metrics = await computeMetricsForReport();
+  const now = new Date();
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
+  const metrics = await computeMetricsForReport(twoWeeksAgo.toISOString(), now.toISOString());
   const allFirefliesMeetings = await storage.getFirefliesMeetings();
 
   let selectedMeetings: typeof allFirefliesMeetings;
@@ -203,7 +207,9 @@ For EACH rep, extract from Fireflies meeting transcripts and summaries:
 }
 
 export async function generateCustomReport(userPrompt: string): Promise<string> {
-  const metrics = await computeMetricsForReport();
+  const now = new Date();
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
+  const metrics = await computeMetricsForReport(twoWeeksAgo.toISOString(), now.toISOString());
   const allDeals = await storage.getDeals();
 
   const prompt = `User request: "${userPrompt}"
@@ -235,7 +241,9 @@ Generate a report addressing the user's specific request. ALWAYS separate data b
 }
 
 export async function streamCustomReport(userPrompt: string) {
-  const metrics = await computeMetricsForReport();
+  const now = new Date();
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
+  const metrics = await computeMetricsForReport(twoWeeksAgo.toISOString(), now.toISOString());
   const allDeals = await storage.getDeals();
 
   const prompt = `User request: "${userPrompt}"

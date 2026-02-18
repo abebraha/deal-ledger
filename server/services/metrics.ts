@@ -7,6 +7,9 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
   const allMeetings = await storage.getMeetings();
   const firefliesMtgs = await storage.getFirefliesMeetings();
 
+  const periodActivities = filterByDateRange(allActivities, 'activityDate', periodStart, periodEnd);
+  const periodMeetings = filterByDateRange(allMeetings, 'startTime', periodStart, periodEnd);
+
   const openDeals = allDeals
     .filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost")
     .map(d => ({
@@ -30,8 +33,8 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     const repDeals = allDeals.filter(d => matchesRep(d.owner, rep));
     const repOpen = repDeals.filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost");
     const repWon = repDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
-    const repActivities = allActivities.filter(a => matchesRep(a.owner, rep));
-    const repMeetings = allMeetings.filter(m => matchesRep(m.owner, rep));
+    const repActivities = periodActivities.filter(a => matchesRep(a.owner, rep));
+    const repMeetings = periodMeetings.filter(m => matchesRep(m.owner, rep));
 
     byRep[rep] = {
       openDeals: repOpen.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate })),
@@ -46,7 +49,15 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     };
   }
 
-  const recentFirefliesMeetings = firefliesMtgs
+  const periodFireflies = periodStart
+    ? firefliesMtgs.filter(m => {
+        if (!m.meetingDate) return false;
+        const d = new Date(m.meetingDate).toISOString();
+        return d >= periodStart && (!periodEnd || d <= periodEnd);
+      })
+    : firefliesMtgs;
+
+  const recentFirefliesMeetings = periodFireflies
     .slice(0, 20)
     .map(m => ({
       title: m.title,
@@ -66,7 +77,18 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     repNames,
     recentFirefliesMeetings,
     generatedAt: new Date().toISOString(),
+    periodStart: periodStart || null,
+    periodEnd: periodEnd || null,
   };
+}
+
+function filterByDateRange(items: any[], dateField: string, start?: string, end?: string): any[] {
+  if (!start) return items;
+  return items.filter(item => {
+    const d = item[dateField];
+    if (!d) return false;
+    return d >= start && (!end || d <= end);
+  });
 }
 
 function extractRepNamesFromData(deals: any[], activities: any[]): string[] {
