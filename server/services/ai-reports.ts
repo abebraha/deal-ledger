@@ -22,68 +22,48 @@ RULES:
 - IMPORTANT: Include a "Notable Activities & Context" section that highlights non-deal work, demos, presentations, internal projects, and any other notable things each rep has been working on based on Fireflies meeting transcripts and summaries. This context is critical for the CEO to understand WHY performance may be lower or higher in a given week.
 - When analyzing Fireflies meeting transcripts, look for mentions of demos, presentations, training, internal meetings, customer calls, and any other context that explains what each rep has been focused on.`;
 
-export async function generateWeeklyEmail(): Promise<string> {
+export async function generateWeeklyEmail(selectedMeetingIds?: number[]): Promise<string> {
   const metrics = await computeMetricsForReport();
-  const firefliesMeetings = await storage.getFirefliesMeetings();
+  const allFirefliesMeetings = await storage.getFirefliesMeetings();
 
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const daysSinceThursday = (dayOfWeek + 7 - 4) % 7 || 7;
-  const lastThursday = new Date(now);
-  lastThursday.setDate(now.getDate() - daysSinceThursday);
-  lastThursday.setHours(0, 0, 0, 0);
+  let selectedMeetings: typeof allFirefliesMeetings;
 
-  const weekStart = new Date(lastThursday);
-  weekStart.setDate(lastThursday.getDate() - 3);
+  if (selectedMeetingIds && selectedMeetingIds.length > 0) {
+    selectedMeetings = allFirefliesMeetings.filter(m => selectedMeetingIds.includes(m.id));
+  } else {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const daysSinceThursday = (dayOfWeek + 7 - 4) % 7 || 7;
+    const lastThursday = new Date(now);
+    lastThursday.setDate(now.getDate() - daysSinceThursday);
+    lastThursday.setHours(0, 0, 0, 0);
+    const weekStart = new Date(lastThursday);
+    weekStart.setDate(lastThursday.getDate() - 3);
 
-  const recentMeetings = firefliesMeetings.filter(m => {
-    if (!m.meetingDate) return false;
-    const d = new Date(m.meetingDate);
-    return d >= weekStart && d <= now;
-  });
+    selectedMeetings = allFirefliesMeetings.filter(m => {
+      if (!m.meetingDate) return false;
+      const d = new Date(m.meetingDate);
+      return d >= weekStart && d <= now;
+    });
+  }
 
-  const salesMeeting = recentMeetings.find(m =>
-    m.title && (
-      m.title.toLowerCase().includes("sales") ||
-      m.title.toLowerCase().includes("pipeline") ||
-      m.title.toLowerCase().includes("team") ||
-      m.title.toLowerCase().includes("weekly")
-    )
-  );
-
-  const salesMeetingData = salesMeeting ? {
-    title: salesMeeting.title,
-    date: salesMeeting.meetingDate,
-    duration: salesMeeting.duration,
-    participants: salesMeeting.participants,
-    summary: salesMeeting.summary,
-    outline: salesMeeting.outline,
-    keywords: salesMeeting.keywords,
-    transcript: salesMeeting.transcript ? salesMeeting.transcript.substring(0, 6000) : null,
-  } : null;
-
-  const otherRecentMeetings = recentMeetings
-    .filter(m => m.firefliesId !== salesMeeting?.firefliesId)
-    .slice(0, 10)
-    .map(m => ({
-      title: m.title,
-      date: m.meetingDate,
-      participants: m.participants,
-      summary: m.summary,
-      outline: m.outline,
-      keywords: m.keywords,
-      transcriptSnippet: m.transcript ? m.transcript.substring(0, 1500) : null,
-    }));
+  const meetingsData = selectedMeetings.map(m => ({
+    title: m.title,
+    date: m.meetingDate,
+    duration: m.duration,
+    participants: m.participants,
+    summary: m.summary,
+    outline: m.outline,
+    keywords: m.keywords,
+    transcriptSnippet: m.transcript ? m.transcript.substring(0, 4000) : null,
+  }));
 
   const prompt = `Generate a weekly sales meeting recap email for Abe.
 
-This report should be focused on what was discussed in the most recent Thursday sales meeting, NOT a full pipeline review. The biweekly scorecard covers pipeline metrics in detail — this weekly email is about the sales meeting itself.
+This report should be focused on what was discussed in the selected meetings, NOT a full pipeline review. The biweekly scorecard covers pipeline metrics in detail — this weekly email is about the meetings themselves.
 
-THURSDAY SALES MEETING DATA:
-${salesMeetingData ? JSON.stringify(salesMeetingData, null, 2) : "No sales meeting recording found for this past Thursday. Use the other recent meetings and pipeline context below instead."}
-
-OTHER RECENT MEETINGS THIS WEEK (for additional context):
-${JSON.stringify(otherRecentMeetings, null, 2)}
+SELECTED MEETINGS (${meetingsData.length} meeting${meetingsData.length !== 1 ? "s" : ""}):
+${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings were selected or found. Generate a brief note indicating no meeting data is available for this period."}
 
 BRIEF PIPELINE CONTEXT (for reference only, not the focus):
 - Total pipeline: $${metrics.kpis.pipeline.total.toLocaleString()} (${metrics.kpis.pipeline.dealCount} deals)
@@ -93,10 +73,10 @@ BRIEF PIPELINE CONTEXT (for reference only, not the focus):
 Format as a professional email with markdown formatting:
 
 ## Subject Line
-Reference the Thursday sales meeting date and key takeaway
+Reference the meeting date(s) and key takeaway
 
-## Sales Meeting Recap
-Summarize the key topics, discussions, and outcomes from the Thursday sales meeting. What was talked about? What decisions were made? What updates did each rep share?
+## Meeting Recap
+Summarize the key topics, discussions, and outcomes from the selected meetings. What was talked about? What decisions were made? What updates did each rep share?
 
 ## Rep Updates: [Rep Name]
 (Repeat for EACH rep: ${metrics.repNames.join(", ")})

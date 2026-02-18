@@ -1,12 +1,29 @@
 import { storage } from "../storage";
 import { log } from "../index";
 
-const REP_NAMES = ["deborah", "deb", "dov", "dovi"];
+const DEFAULT_REP_PATTERNS = ["deborah", "deb", "dov", "dovi"];
 
-function isRepOwner(ownerName: string | null | undefined): boolean {
+async function getRepOwnerIds(): Promise<{ patterns: string[]; hubspotOwnerIds: string[] }> {
+  const allSettings = await storage.getAllSettings();
+  const hubspotOwnerIds: string[] = [];
+  const patterns = [...DEFAULT_REP_PATTERNS];
+
+  for (const [key, value] of Object.entries(allSettings)) {
+    if (key.startsWith("rep_hubspot_owner_") && value) {
+      hubspotOwnerIds.push(value);
+    }
+  }
+
+  return { patterns, hubspotOwnerIds };
+}
+
+function isRepOwner(ownerName: string | null | undefined, ownerId?: string | null, mappedOwnerIds?: string[]): boolean {
+  if (mappedOwnerIds && mappedOwnerIds.length > 0 && ownerId) {
+    return mappedOwnerIds.includes(ownerId);
+  }
   if (!ownerName) return false;
   const lower = ownerName.toLowerCase().trim();
-  return REP_NAMES.some(rep => lower.includes(rep));
+  return DEFAULT_REP_PATTERNS.some(rep => lower.includes(rep));
 }
 
 export async function syncHubSpot(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
@@ -40,6 +57,8 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync owners: ${e}`, "hubspot");
     }
 
+    const { hubspotOwnerIds: mappedOwnerIds } = await getRepOwnerIds();
+
     // Sync Deals - paginate through all
     let hasMore = true;
     let after: string | undefined;
@@ -56,9 +75,12 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
 
       const dealsData = await dealsResponse.json();
       for (const deal of dealsData.results || []) {
-        const ownerName = deal.properties.hubspot_owner_id ? ownerMap[deal.properties.hubspot_owner_id] : null;
+        const ownerId = deal.properties.hubspot_owner_id || null;
+        const ownerName = ownerId ? ownerMap[ownerId] : null;
 
-        if (!isRepOwner(ownerName)) {
+        if (mappedOwnerIds.length > 0) {
+          if (!ownerId || !mappedOwnerIds.includes(ownerId)) continue;
+        } else if (!isRepOwner(ownerName)) {
           continue;
         }
 
@@ -92,8 +114,13 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         if (engResponse.ok) {
           const engData = await engResponse.json();
           for (const eng of engData.results || []) {
-            const ownerName = eng.properties.hubspot_owner_id ? ownerMap[eng.properties.hubspot_owner_id] : null;
-            if (ownerName && !isRepOwner(ownerName)) continue;
+            const engOwnerId = eng.properties.hubspot_owner_id || null;
+            const ownerName = engOwnerId ? ownerMap[engOwnerId] : null;
+            if (mappedOwnerIds.length > 0) {
+              if (!engOwnerId || !mappedOwnerIds.includes(engOwnerId)) continue;
+            } else if (ownerName && !isRepOwner(ownerName)) {
+              continue;
+            }
 
             const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
             const body = eng.properties.hs_note_body || "";
@@ -122,8 +149,13 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       if (meetingsResponse.ok) {
         const meetingsData = await meetingsResponse.json();
         for (const mtg of meetingsData.results || []) {
-          const ownerName = mtg.properties.hubspot_owner_id ? ownerMap[mtg.properties.hubspot_owner_id] : null;
-          if (ownerName && !isRepOwner(ownerName)) continue;
+          const mtgOwnerId = mtg.properties.hubspot_owner_id || null;
+          const ownerName = mtgOwnerId ? ownerMap[mtgOwnerId] : null;
+          if (mappedOwnerIds.length > 0) {
+            if (!mtgOwnerId || !mappedOwnerIds.includes(mtgOwnerId)) continue;
+          } else if (ownerName && !isRepOwner(ownerName)) {
+            continue;
+          }
 
           await storage.upsertMeeting({
             hubspotId: mtg.id,

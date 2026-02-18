@@ -156,6 +156,61 @@ export async function registerRoutes(
     }
   });
 
+  // ─── HubSpot Owners (for rep mapping) ───
+  app.get("/api/hubspot/owners", async (_req, res) => {
+    try {
+      let apiKey = process.env.HUBSPOT_API_KEY;
+      try {
+        const conn = await storage.getConnection("hubspot");
+        if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
+          apiKey = (conn.config as any).apiKey;
+        }
+      } catch (e) {}
+      if (!apiKey) {
+        return res.status(400).json({ error: "HubSpot not connected" });
+      }
+      const ownersResponse = await fetch("https://api.hubapi.com/crm/v3/owners?limit=100", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!ownersResponse.ok) {
+        return res.status(ownersResponse.status).json({ error: "Failed to fetch HubSpot owners" });
+      }
+      const ownersData = await ownersResponse.json();
+      const owners = (ownersData.results || []).map((o: any) => ({
+        id: o.id,
+        name: `${o.firstName || ""} ${o.lastName || ""}`.trim(),
+        email: o.email || null,
+      })).filter((o: any) => o.name.length > 0);
+      res.json(owners);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Fireflies Meetings list (for report meeting selection) ───
+  app.get("/api/fireflies-meetings", async (req, res) => {
+    try {
+      const allMeetings = await storage.getFirefliesMeetings();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+      const recent = allMeetings
+        .filter(m => {
+          if (!m.meetingDate) return true;
+          return new Date(m.meetingDate) >= thirtyDaysAgo;
+        })
+        .map(m => ({
+          id: m.id,
+          firefliesId: m.firefliesId,
+          title: m.title,
+          meetingDate: m.meetingDate,
+          duration: m.duration,
+          participants: m.participants,
+        }));
+      res.json(recent);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── Manual Sync ───
   app.post("/api/sync/hubspot", async (_req, res) => {
     try {
@@ -205,13 +260,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reports/generate/weekly", async (_req, res) => {
+  app.post("/api/reports/generate/weekly", async (req, res) => {
     try {
-      const content = await generateWeeklyEmail();
+      const { meetingIds } = req.body || {};
+      const content = await generateWeeklyEmail(meetingIds);
       const kpis = await storage.computeKPIs();
       const report = await storage.createReport({
         type: "weekly",
-        title: `Weekly Pipeline Update - ${new Date().toLocaleDateString()}`,
+        title: `Meeting Recap - ${new Date().toLocaleDateString()}`,
         content,
         kpis,
         periodStart: new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0],

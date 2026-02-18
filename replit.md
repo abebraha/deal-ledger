@@ -53,7 +53,9 @@ client/src/
 - FIREFLIES_API_KEY - Fireflies API key
 
 ## Recent Changes
-- 2026-02-18: Weekly report redesigned as "Meeting Recap" — focused on Thursday sales meeting content from Fireflies (what was discussed, rep updates, action items) rather than duplicating HubSpot pipeline data; biweekly scorecard remains the full pipeline/metrics report
+- 2026-02-18: Rep mapping in Settings — map Deb/Dovi to HubSpot owner IDs via dropdowns; HubSpot sync uses mapped IDs when set, falls back to name pattern matching
+- 2026-02-18: Meeting selection for weekly reports — Reports page shows Fireflies meetings from last 30 days with checkboxes; user picks which meetings to include in each recap
+- 2026-02-18: Weekly report redesigned as "Meeting Recap" — focused on selected Fireflies meetings (what was discussed, rep updates, action items) rather than duplicating HubSpot pipeline data; biweekly scorecard remains the full pipeline/metrics report
 - 2026-02-18: Commitment ledger feature fully removed from schema references, storage, routes, metrics, AI reports, and all frontend pages
 - 2026-02-18: Fireflies meetings now stored with full summaries, outlines, keywords, transcript snippets; AI reports include "Notable Activities & Context" section highlighting demos, presentations, internal projects per rep
 - 2026-02-18: Revenue goal now synced from HubSpot goal_targets API (Settings page shows read-only); meetings/outbound goals remain manual in Settings
