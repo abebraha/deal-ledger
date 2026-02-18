@@ -53,6 +53,8 @@ client/src/
 - FIREFLIES_API_KEY - Fireflies API key
 
 ## Recent Changes
+- 2026-02-18: Revenue goal now synced from HubSpot goal_targets API (Settings page shows read-only); meetings/outbound goals remain manual in Settings
+- 2026-02-18: HubSpot sync filters all data to Deb & Dovi only; non-rep deals/activities/meetings are excluded at sync time and cleaned up automatically
 - 2026-02-18: PDF report generation (pdfkit), per-rep metrics breakdown (Deb/Dovi), improved AI prompts with rep separation, markdown rendering on Reports page
 - 2026-02-18: Connection flow with API key validation, sync timestamp tracking, config preservation during syncs
 - 2026-02-17: Initial full build - schema, storage, services, API routes, frontend connected to real APIs
