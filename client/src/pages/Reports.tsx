@@ -100,7 +100,7 @@ export function Reports() {
               data-testid="button-generate-weekly"
             >
               {generateWeekly.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Weekly Report
+              Weekly Meeting Recap
             </Button>
           </div>
         </div>
@@ -131,7 +131,7 @@ export function Reports() {
                         <span>{format(new Date(report.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
                         <span>·</span>
                         <Badge variant="outline" className="text-xs">
-                          {report.type === "weekly" ? "Weekly" : report.type === "biweekly" ? "Bi-Weekly" : "Custom"}
+                          {report.type === "weekly" ? "Meeting Recap" : report.type === "biweekly" ? "Bi-Weekly Scorecard" : "Custom"}
                         </Badge>
                         {report.sentAt && (
                           <Badge variant="secondary" className="text-xs">Sent</Badge>

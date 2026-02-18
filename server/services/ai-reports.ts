@@ -24,45 +24,96 @@ RULES:
 
 export async function generateWeeklyEmail(): Promise<string> {
   const metrics = await computeMetricsForReport();
+  const firefliesMeetings = await storage.getFirefliesMeetings();
 
-  const prompt = `Generate a weekly sales pipeline email update for Abe.
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const daysSinceThursday = (dayOfWeek + 7 - 4) % 7 || 7;
+  const lastThursday = new Date(now);
+  lastThursday.setDate(now.getDate() - daysSinceThursday);
+  lastThursday.setHours(0, 0, 0, 0);
 
-DATA:
-${JSON.stringify(metrics, null, 2)}
+  const weekStart = new Date(lastThursday);
+  weekStart.setDate(lastThursday.getDate() - 3);
 
-Format as a professional report with markdown formatting:
+  const recentMeetings = firefliesMeetings.filter(m => {
+    if (!m.meetingDate) return false;
+    const d = new Date(m.meetingDate);
+    return d >= weekStart && d <= now;
+  });
+
+  const salesMeeting = recentMeetings.find(m =>
+    m.title && (
+      m.title.toLowerCase().includes("sales") ||
+      m.title.toLowerCase().includes("pipeline") ||
+      m.title.toLowerCase().includes("team") ||
+      m.title.toLowerCase().includes("weekly")
+    )
+  );
+
+  const salesMeetingData = salesMeeting ? {
+    title: salesMeeting.title,
+    date: salesMeeting.meetingDate,
+    duration: salesMeeting.duration,
+    participants: salesMeeting.participants,
+    summary: salesMeeting.summary,
+    outline: salesMeeting.outline,
+    keywords: salesMeeting.keywords,
+    transcript: salesMeeting.transcript ? salesMeeting.transcript.substring(0, 6000) : null,
+  } : null;
+
+  const otherRecentMeetings = recentMeetings
+    .filter(m => m.firefliesId !== salesMeeting?.firefliesId)
+    .slice(0, 10)
+    .map(m => ({
+      title: m.title,
+      date: m.meetingDate,
+      participants: m.participants,
+      summary: m.summary,
+      outline: m.outline,
+      keywords: m.keywords,
+      transcriptSnippet: m.transcript ? m.transcript.substring(0, 1500) : null,
+    }));
+
+  const prompt = `Generate a weekly sales meeting recap email for Abe.
+
+This report should be focused on what was discussed in the most recent Thursday sales meeting, NOT a full pipeline review. The biweekly scorecard covers pipeline metrics in detail — this weekly email is about the sales meeting itself.
+
+THURSDAY SALES MEETING DATA:
+${salesMeetingData ? JSON.stringify(salesMeetingData, null, 2) : "No sales meeting recording found for this past Thursday. Use the other recent meetings and pipeline context below instead."}
+
+OTHER RECENT MEETINGS THIS WEEK (for additional context):
+${JSON.stringify(otherRecentMeetings, null, 2)}
+
+BRIEF PIPELINE CONTEXT (for reference only, not the focus):
+- Total pipeline: $${metrics.kpis.pipeline.total.toLocaleString()} (${metrics.kpis.pipeline.dealCount} deals)
+- Revenue closed: $${metrics.kpis.revenue.total.toLocaleString()}
+- Rep names: ${metrics.repNames.join(", ")}
+
+Format as a professional email with markdown formatting:
 
 ## Subject Line
-A clear, data-driven subject line
+Reference the Thursday sales meeting date and key takeaway
 
-## Executive Summary
-2-3 sentence overview of the week, including any notable context from team meetings
+## Sales Meeting Recap
+Summarize the key topics, discussions, and outcomes from the Thursday sales meeting. What was talked about? What decisions were made? What updates did each rep share?
 
-## Overall Revenue & Pipeline
-- Total pipeline value, weighted pipeline, deals won this period
-- Brief trend commentary
+## Rep Updates: [Rep Name]
+(Repeat for EACH rep: ${metrics.repNames.join(", ")})
+Based on what was discussed in the meeting:
+- What did this rep report on?
+- What deals or prospects did they mention?
+- Any challenges or wins they shared?
+- What are they focused on this coming week?
 
-## Rep Performance: [Rep Name]
-(Repeat this section for EACH rep in the data: ${metrics.repNames.join(", ")})
-For each rep include:
-- Open pipeline value and deal count
-- Weighted pipeline
-- Revenue won
-- Activity count and breakdown (calls, emails, meetings, tasks)
-- Meetings held this period
-- Key deals to watch (top 3 by amount)
+## Key Discussion Points
+Bullet-point the main topics covered in the meeting — deals discussed, strategies debated, challenges raised, decisions made
 
-## Notable Activities & Context
-For EACH rep, review the Fireflies meeting transcripts and summaries to highlight:
-- Demos given or being prepared
-- Presentations created or delivered
-- Internal projects or collaboration (e.g., working with colleagues on demos, training)
-- Customer-facing activities beyond standard deal work
-- Any other context that explains what each rep has been focused on
-- This section is CRITICAL - the CEO needs to understand what reps are doing beyond just deal numbers
+## Action Items & Next Steps
+What needs to happen before the next meeting? Who owns what?
 
-## Recommended Actions
-- Specific, actionable items for the week ahead`;
+## Quick Pipeline Check
+Just 2-3 sentences of high-level pipeline context (total value, any notable changes) — keep this brief since the biweekly scorecard covers this in depth`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
