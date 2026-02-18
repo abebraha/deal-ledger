@@ -1,8 +1,15 @@
 import { storage } from "../storage";
 import { log } from "../index";
 
+const REP_NAMES = ["deborah", "deb", "dov", "dovi"];
+
+function isRepOwner(ownerName: string | null | undefined): boolean {
+  if (!ownerName) return false;
+  const lower = ownerName.toLowerCase().trim();
+  return REP_NAMES.some(rep => lower.includes(rep));
+}
+
 export async function syncHubSpot(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
-  // Try database config first, then env var
   let apiKey = process.env.HUBSPOT_API_KEY;
   try {
     const conn = await storage.getConnection("hubspot");
@@ -17,61 +24,66 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
   let recordsProcessed = 0;
 
   try {
-    // Sync Deals
-    const dealsResponse = await fetch("https://api.hubapi.com/crm/v3/objects/deals?limit=100&properties=dealname,amount,dealstage,closedate,hubspot_owner_id,hs_lastmodifieddate,pipeline", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-
-    if (!dealsResponse.ok) {
-      const errorText = await dealsResponse.text();
-      throw new Error(`HubSpot Deals API error ${dealsResponse.status}: ${errorText}`);
-    }
-
-    const dealsData = await dealsResponse.json();
-    for (const deal of dealsData.results || []) {
-      await storage.upsertDeal({
-        hubspotId: deal.id,
-        name: deal.properties.dealname || "Untitled Deal",
-        amount: parseFloat(deal.properties.amount) || 0,
-        stage: deal.properties.dealstage || "unknown",
-        closeDate: deal.properties.closedate || null,
-        lastActivityDate: deal.properties.hs_lastmodifieddate || null,
-        pipeline: deal.properties.pipeline || null,
-        hubspotUrl: `https://app.hubspot.com/contacts/deals/${deal.id}`,
-      });
-      recordsProcessed++;
-    }
-
-    // Sync owner names for deals
+    // Build owner map first so we can filter by rep
+    const ownerMap: Record<string, string> = {};
     try {
       const ownersResponse = await fetch("https://api.hubapi.com/crm/v3/owners?limit=100", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (ownersResponse.ok) {
         const ownersData = await ownersResponse.json();
-        const ownerMap: Record<string, string> = {};
         for (const owner of ownersData.results || []) {
           ownerMap[owner.id] = `${owner.firstName || ""} ${owner.lastName || ""}`.trim();
-        }
-        // Update deal owners
-        const allDeals = await storage.getDeals();
-        for (const deal of allDeals) {
-          if (deal.hubspotId) {
-            const hubspotDeal = (dealsData.results || []).find((d: any) => d.id === deal.hubspotId);
-            if (hubspotDeal?.properties?.hubspot_owner_id) {
-              const ownerName = ownerMap[hubspotDeal.properties.hubspot_owner_id];
-              if (ownerName) {
-                await storage.upsertDeal({ ...deal, owner: ownerName, hubspotId: deal.hubspotId });
-              }
-            }
-          }
         }
       }
     } catch (e) {
       log(`Warning: Could not sync owners: ${e}`, "hubspot");
     }
 
-    // Sync Engagements (activities)
+    // Sync Deals - paginate through all
+    let hasMore = true;
+    let after: string | undefined;
+    while (hasMore) {
+      const url = `https://api.hubapi.com/crm/v3/objects/deals?limit=100&properties=dealname,amount,dealstage,closedate,hubspot_owner_id,hs_lastmodifieddate,pipeline${after ? `&after=${after}` : ""}`;
+      const dealsResponse = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      if (!dealsResponse.ok) {
+        const errorText = await dealsResponse.text();
+        throw new Error(`HubSpot Deals API error ${dealsResponse.status}: ${errorText}`);
+      }
+
+      const dealsData = await dealsResponse.json();
+      for (const deal of dealsData.results || []) {
+        const ownerName = deal.properties.hubspot_owner_id ? ownerMap[deal.properties.hubspot_owner_id] : null;
+
+        if (!isRepOwner(ownerName)) {
+          continue;
+        }
+
+        await storage.upsertDeal({
+          hubspotId: deal.id,
+          name: deal.properties.dealname || "Untitled Deal",
+          amount: parseFloat(deal.properties.amount) || 0,
+          stage: deal.properties.dealstage || "unknown",
+          owner: ownerName || null,
+          closeDate: deal.properties.closedate || null,
+          lastActivityDate: deal.properties.hs_lastmodifieddate || null,
+          pipeline: deal.properties.pipeline || null,
+          hubspotUrl: `https://app.hubspot.com/contacts/deals/${deal.id}`,
+        });
+        recordsProcessed++;
+      }
+
+      if (dealsData.paging?.next?.after) {
+        after = dealsData.paging.next.after;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Sync Engagements (activities) - only for reps
     try {
       for (const engType of ["calls", "emails", "notes", "tasks"]) {
         const engResponse = await fetch(`https://api.hubapi.com/crm/v3/objects/${engType}?limit=50&properties=hs_timestamp,hs_call_title,hs_email_subject,hs_note_body,hs_task_subject,hubspot_owner_id`, {
@@ -80,6 +92,9 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         if (engResponse.ok) {
           const engData = await engResponse.json();
           for (const eng of engData.results || []) {
+            const ownerName = eng.properties.hubspot_owner_id ? ownerMap[eng.properties.hubspot_owner_id] : null;
+            if (!isRepOwner(ownerName)) continue;
+
             const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
             const body = eng.properties.hs_note_body || "";
             await storage.upsertActivity({
@@ -87,6 +102,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
               type: engType.toUpperCase().replace(/S$/, ""),
               subject: subject,
               body: body,
+              owner: ownerName || null,
               activityDate: eng.properties.hs_timestamp || eng.createdAt,
               hubspotUrl: `https://app.hubspot.com/contacts/activity/${eng.id}`,
             });
@@ -98,7 +114,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync activities: ${e}`, "hubspot");
     }
 
-    // Sync Meetings
+    // Sync Meetings - only for reps
     try {
       const meetingsResponse = await fetch("https://api.hubapi.com/crm/v3/objects/meetings?limit=50&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id", {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -106,12 +122,16 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       if (meetingsResponse.ok) {
         const meetingsData = await meetingsResponse.json();
         for (const mtg of meetingsData.results || []) {
+          const ownerName = mtg.properties.hubspot_owner_id ? ownerMap[mtg.properties.hubspot_owner_id] : null;
+          if (!isRepOwner(ownerName)) continue;
+
           await storage.upsertMeeting({
             hubspotId: mtg.id,
             title: mtg.properties.hs_meeting_title || "Untitled Meeting",
             startTime: mtg.properties.hs_meeting_start_time || null,
             endTime: mtg.properties.hs_meeting_end_time || null,
             outcome: mtg.properties.hs_meeting_outcome || null,
+            owner: ownerName || null,
             hubspotUrl: `https://app.hubspot.com/contacts/meetings/${mtg.id}`,
           });
           recordsProcessed++;
@@ -121,9 +141,60 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync meetings: ${e}`, "hubspot");
     }
 
+    // Sync Revenue Goals from HubSpot
+    try {
+      const goalsResponse = await fetch("https://api.hubapi.com/crm/v3/objects/goal_targets?limit=100&properties=hs_goal_name,hs_target_amount,hs_start_datetime,hs_end_datetime", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (goalsResponse.ok) {
+        const goalsData = await goalsResponse.json();
+        const goals = goalsData.results || [];
+        const now = new Date();
+
+        // Find the best current-period revenue goal
+        let currentGoal: any = null;
+        let fallbackGoal: any = null;
+
+        for (const goal of goals) {
+          const amount = parseFloat(goal.properties.hs_target_amount) || 0;
+          if (amount <= 0) continue;
+
+          const start = goal.properties.hs_start_datetime ? new Date(goal.properties.hs_start_datetime) : null;
+          const end = goal.properties.hs_end_datetime ? new Date(goal.properties.hs_end_datetime) : null;
+
+          if (start && end && now >= start && now <= end) {
+            if (!currentGoal || amount > (parseFloat(currentGoal.properties.hs_target_amount) || 0)) {
+              currentGoal = goal;
+            }
+          } else if (!fallbackGoal) {
+            fallbackGoal = goal;
+          }
+        }
+
+        const selectedGoal = currentGoal || fallbackGoal;
+        if (selectedGoal) {
+          const targetAmount = parseFloat(selectedGoal.properties.hs_target_amount) || 0;
+          if (targetAmount > 0) {
+            await storage.setSetting("hubspotRevenueGoal", String(targetAmount));
+            log(`Synced revenue goal from HubSpot: $${targetAmount} (${selectedGoal.properties.hs_goal_name || "unnamed"})`, "hubspot");
+          }
+        }
+      }
+    } catch (e) {
+      log(`Warning: Could not sync goals: ${e}`, "hubspot");
+    }
+
+    // Clean up any non-rep data that may exist from prior syncs
+    try {
+      const { cleanupNonRepData } = await import("../storage");
+      await cleanupNonRepData();
+    } catch (e) {
+      log(`Warning: Could not clean up non-rep data: ${e}`, "hubspot");
+    }
+
     const existingConn = await storage.getConnection("hubspot");
     await storage.upsertConnection("hubspot", true, existingConn?.config, true);
-    await storage.createSyncLog("hubspot", "completed", `Synced ${recordsProcessed} records`, recordsProcessed);
+    await storage.createSyncLog("hubspot", "completed", `Synced ${recordsProcessed} records (Deb & Dovi only)`, recordsProcessed);
 
     return { success: true, recordsProcessed };
   } catch (error: any) {

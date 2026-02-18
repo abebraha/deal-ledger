@@ -286,7 +286,7 @@ class DatabaseStorage implements IStorage {
       return new Date(c.dueDate) < new Date();
     });
 
-    const monthlyRevenueGoal = parseInt(allSettings.monthlyRevenueGoal || "100000");
+    const monthlyRevenueGoal = parseInt(allSettings.hubspotRevenueGoal || allSettings.monthlyRevenueGoal || "100000");
     const weeklyMeetingsGoal = parseInt(allSettings.weeklyMeetingsGoal || "15");
     const weeklyOutboundGoal = parseInt(allSettings.weeklyOutboundGoal || "50");
 
@@ -325,3 +325,17 @@ class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+export async function cleanupNonRepData() {
+  const repPatterns = ["%deb%", "%dov%"];
+  
+  await db.delete(deals).where(
+    sql`(${deals.owner} IS NULL OR (LOWER(${deals.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${deals.owner}) NOT LIKE ${repPatterns[1]}))`
+  );
+  await db.delete(activities).where(
+    sql`(${activities.owner} IS NULL OR (LOWER(${activities.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${activities.owner}) NOT LIKE ${repPatterns[1]}))`
+  );
+  await db.delete(meetings).where(
+    sql`(${meetings.owner} IS NULL OR (LOWER(${meetings.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${meetings.owner}) NOT LIKE ${repPatterns[1]}))`
+  );
+}
