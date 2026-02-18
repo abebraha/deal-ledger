@@ -35,17 +35,23 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     const repWon = repDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
     const repActivities = periodActivities.filter(a => matchesRep(a.owner, rep));
     const repMeetings = periodMeetings.filter(m => matchesRep(m.owner, rep));
+    const repAllMeetings = allMeetings.filter(m => matchesRep(m.owner, rep));
+    const meetingsScheduledThisPeriod = repAllMeetings.filter(m => {
+      if (!m.scheduledDate || !periodStart) return false;
+      return m.scheduledDate >= periodStart && (!periodEnd || m.scheduledDate <= periodEnd);
+    });
 
     byRep[rep] = {
       openDeals: repOpen.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate })),
       totalOpenPipeline: repOpen.reduce((sum, d) => sum + (d.amount || 0), 0),
-      weightedPipeline: repOpen.reduce((sum, d) => sum + (d.amount || 0) * (d.probability || 0) / 100, 0),
       dealsWon: repWon.length,
       revenueWon: repWon.reduce((sum, d) => sum + (d.amount || 0), 0),
       totalActivities: repActivities.length,
       activitiesByType: countByType(repActivities),
       meetingsHeld: repMeetings.length,
-      meetings: repMeetings.slice(0, 10).map(m => ({ title: m.title, startTime: m.startTime, outcome: m.outcome })),
+      meetingsHeldDetails: repMeetings.map(m => ({ title: m.title, startTime: m.startTime, endTime: m.endTime, outcome: m.outcome })),
+      meetingsScheduled: meetingsScheduledThisPeriod.length,
+      meetingsScheduledDetails: meetingsScheduledThisPeriod.map(m => ({ title: m.title, startTime: m.startTime, scheduledDate: m.scheduledDate, outcome: m.outcome })),
     };
   }
 

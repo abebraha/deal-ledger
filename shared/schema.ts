@@ -70,6 +70,7 @@ export const meetings = pgTable("meetings", {
   outcome: text("outcome"),
   owner: text("owner"),
   attendees: text("attendees"),
+  scheduledDate: text("scheduled_date"),
   hubspotUrl: text("hubspot_url"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

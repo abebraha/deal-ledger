@@ -175,9 +175,11 @@ Rate as Green/Yellow/Red based on the data, with brief justification
 ### Rep Scorecard: [Rep Name]
 (Repeat this section for EACH rep: ${metrics.repNames.join(", ")})
 For each rep include:
-- Pipeline Summary: open deals count, total value, weighted value
-- Activity Dashboard: calls, emails, LinkedIn messages, meetings, tasks
+- Pipeline Summary: open deals count, total pipeline value
+- Activity Dashboard: calls, emails, LinkedIn messages, tasks
 - Outreach Summary: total outreach actions (calls + emails + LinkedIn messages) vs weekly goal
+- Meetings Held This Period: list EVERY meeting that took place during the period — include the meeting title, date, and outcome for each one
+- Meetings Scheduled This Period: list EVERY meeting that was booked/created during the period — include the meeting title, scheduled-for date, and when it was booked
 - Top Deals: top 3-5 deals by amount with stage and close date
 - Performance Rating: Green/Yellow/Red with brief commentary
 
