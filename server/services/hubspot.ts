@@ -217,7 +217,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       let mtgHasMore = true;
       let mtgAfter: string | undefined;
       while (mtgHasMore) {
-        const mtgUrl = `https://api.hubapi.com/crm/v3/objects/meetings?limit=100&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id,hs_createdate${mtgAfter ? `&after=${mtgAfter}` : ""}`;
+        const mtgUrl = `https://api.hubapi.com/crm/v3/objects/meetings?limit=100&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id${mtgAfter ? `&after=${mtgAfter}` : ""}`;
         const meetingsResponse = await fetch(mtgUrl, {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
@@ -235,7 +235,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
               endTime: mtg.properties.hs_meeting_end_time || null,
               outcome: mtg.properties.hs_meeting_outcome || null,
               owner: resolvedMtgOwner || null,
-              scheduledDate: mtg.properties.hs_createdate || mtg.createdAt || null,
               hubspotUrl: `https://app.hubspot.com/contacts/meetings/${mtg.id}`,
             });
             recordsProcessed++;
