@@ -55,27 +55,28 @@ export function Dashboard() {
             value={`$${(kpis?.revenue?.total ?? 0).toLocaleString()}`} 
             trend={kpis?.revenue?.attainment != null ? `${kpis.revenue.attainment.toFixed(1)}% of goal` : undefined}
             trendUp={kpis?.revenue?.attainment != null ? kpis.revenue.attainment >= 100 : undefined} 
+            subtitle="Closed won deals"
             icon={DollarSign} 
           />
           <KPICard 
             title="Pipeline Value" 
             value={`$${(kpis?.pipeline?.total ?? 0).toLocaleString()}`} 
-            trend={kpis?.pipeline?.dealCount != null ? `${kpis.pipeline.dealCount} deals` : undefined}
-            trendUp={true} 
+            subtitle={kpis?.pipeline?.dealCount != null ? `${kpis.pipeline.dealCount} open deals` : undefined}
             icon={Users} 
           />
           <KPICard 
-            title="Meetings Held" 
+            title="Meetings This Week" 
             value={kpis?.activity?.meetingsHeld ?? 0} 
             trend={kpis?.activity?.meetingsGoal ? `Goal: ${kpis.activity.meetingsGoal}` : undefined}
             trendUp={kpis?.activity ? kpis.activity.meetingsHeld >= kpis.activity.meetingsGoal : undefined} 
             icon={Phone} 
           />
           <KPICard 
-            title="Outbound Activity" 
+            title="Outbound This Week" 
             value={kpis?.activity?.totalOutbound ?? 0} 
             trend={kpis?.activity?.outboundGoal ? `Goal: ${kpis.activity.outboundGoal}` : undefined}
             trendUp={kpis?.activity ? kpis.activity.totalOutbound >= kpis.activity.outboundGoal : undefined}
+            subtitle={`${kpis?.activity?.calls ?? 0} calls · ${kpis?.activity?.emails ?? 0} emails`}
             icon={BarChart3} 
           />
         </div>

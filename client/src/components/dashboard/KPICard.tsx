@@ -4,12 +4,13 @@ import { cn } from "@/lib/utils";
 interface KPICardProps {
   title: string;
   value: string | number;
+  subtitle?: string;
   trend?: string;
   trendUp?: boolean;
   icon?: React.ElementType;
 }
 
-export function KPICard({ title, value, trend, trendUp, icon: Icon }: KPICardProps) {
+export function KPICard({ title, value, subtitle, trend, trendUp, icon: Icon }: KPICardProps) {
   return (
     <Card className="border shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -23,8 +24,10 @@ export function KPICard({ title, value, trend, trendUp, icon: Icon }: KPICardPro
         {trend && (
           <p className={cn("text-xs flex items-center mt-1", trendUp ? "text-green-600" : "text-red-600")}>
             {trend}
-            <span className="text-muted-foreground ml-1">vs last month</span>
           </p>
+        )}
+        {subtitle && (
+          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
         )}
       </CardContent>
     </Card>
