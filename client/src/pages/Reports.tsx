@@ -143,17 +143,21 @@ export function Reports() {
                 key={meeting.id}
                 className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors"
                 data-testid={`${testIdPrefix}-meeting-item-${meeting.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onToggle(meeting.id);
+                }}
               >
                 <Checkbox
                   checked={selectedIds.includes(meeting.id)}
-                  onCheckedChange={() => onToggle(meeting.id)}
+                  tabIndex={-1}
                   data-testid={`${testIdPrefix}-checkbox-meeting-${meeting.id}`}
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{meeting.title || "Untitled Meeting"}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     {meeting.meetingDate && (
-                      <span>{format(new Date(meeting.meetingDate), "MMM d, yyyy 'at' h:mm a")}</span>
+                      <span>{format(new Date(meeting.meetingDate + "T00:00:00"), "MMM d, yyyy")}</span>
                     )}
                     {meeting.duration && (
                       <>

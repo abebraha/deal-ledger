@@ -7,20 +7,26 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. You generate clear, data-driven reports.
+const WEEKLY_SYSTEM_PROMPT = `You are writing brief sales updates for a CEO named Abe. Write like a sharp executive assistant — short, direct, no fluff.
+
+RULES:
+- All facts MUST come from the data provided. Never invent numbers or names.
+- Be extremely concise. Use short sentences and sentence fragments.
+- NO long paragraphs. Every point should be 1-2 lines max.
+- Separate each rep's section clearly.
+- Format numbers with commas (e.g., $125,000).
+- Write in a conversational but professional tone — like a quick briefing, not a formal report.`;
+
+const SCORECARD_SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. You generate clear, data-driven scorecard reports.
 
 RULES:
 - All metrics you cite MUST come from the structured data provided. Never invent numbers.
 - When referencing a deal, include the deal name and amount.
 - Use clear markdown section headers (## and ###).
 - Be concise but thorough.
-- Use bullet points for lists.
-- Include actionable recommendations.
-- CRITICAL: Every report MUST have separate sections for each sales rep. Present each rep's data independently so the CEO can evaluate each person's performance.
-- Use --- horizontal rules between major sections for visual separation.
-- Format numbers with commas for readability (e.g., $125,000 not $125000).
-- IMPORTANT: Include a "Notable Activities & Context" section that highlights non-deal work, demos, presentations, internal projects, and any other notable things each rep has been working on based on Fireflies meeting transcripts and summaries. This context is critical for the CEO to understand WHY performance may be lower or higher in a given week.
-- When analyzing Fireflies meeting transcripts, look for mentions of demos, presentations, training, internal meetings, customer calls, and any other context that explains what each rep has been focused on.`;
+- CRITICAL: Every report MUST have separate sections for each sales rep.
+- Format numbers with commas (e.g., $125,000).
+- Use --- horizontal rules between major sections.`;
 
 export async function generateWeeklyEmail(selectedMeetingIds?: number[]): Promise<string> {
   const metrics = await computeMetricsForReport();
@@ -58,50 +64,51 @@ export async function generateWeeklyEmail(selectedMeetingIds?: number[]): Promis
     transcriptSnippet: m.transcript ? m.transcript.substring(0, 4000) : null,
   }));
 
-  const prompt = `Generate a weekly sales meeting recap email for Abe.
+  const prompt = `Write a short weekly sales update for Abe based on the meeting recordings below.
 
-This report should be focused on what was discussed in the selected meetings, NOT a full pipeline review. The biweekly scorecard covers pipeline metrics in detail — this weekly email is about the meetings themselves.
+SELECTED MEETINGS (${meetingsData.length}):
+${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings selected."}
 
-SELECTED MEETINGS (${meetingsData.length} meeting${meetingsData.length !== 1 ? "s" : ""}):
-${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings were selected or found. Generate a brief note indicating no meeting data is available for this period."}
+Rep names: ${metrics.repNames.join(", ")}
 
-BRIEF PIPELINE CONTEXT (for reference only, not the focus):
-- Total pipeline: $${metrics.kpis.pipeline.total.toLocaleString()} (${metrics.kpis.pipeline.dealCount} deals)
-- Revenue closed: $${metrics.kpis.revenue.total.toLocaleString()}
-- Rep names: ${metrics.repNames.join(", ")}
+INSTRUCTIONS — follow this format exactly:
 
-Format as a professional email with markdown formatting:
+Start with one line: "Here's this week's update."
 
-## Subject Line
-Reference the meeting date(s) and key takeaway
+Then for EACH rep, write a section like this:
 
-## Meeting Recap
-Summarize the key topics, discussions, and outcomes from the selected meetings. What was talked about? What decisions were made? What updates did each rep share?
+## [Rep Name]
 
-## Rep Updates: [Rep Name]
-(Repeat for EACH rep: ${metrics.repNames.join(", ")})
-Based on what was discussed in the meeting:
-- What did this rep report on?
-- What deals or prospects did they mention?
-- Any challenges or wins they shared?
-- What are they focused on this coming week?
+Start with a quick one-line summary of their week (e.g., "Four broker meetings this week plus a demo build.").
 
-## Key Discussion Points
-Bullet-point the main topics covered in the meeting — deals discussed, strategies debated, challenges raised, decisions made
+Then list each key contact, deal, or topic discussed — one per block, with short bullet points underneath. Like this:
 
-## Action Items & Next Steps
-What needs to happen before the next meeting? Who owns what?
+**[Contact Name] – [Company].**
+Brief context about the relationship or opportunity.
+Why it matters — one line.
 
-## Quick Pipeline Check
-Just 2-3 sentences of high-level pipeline context (total value, any notable changes) — keep this brief since the biweekly scorecard covers this in depth`;
+**[Deal or Topic Name]**
+What happened. One or two lines max.
+What it means or what's next.
+
+End each rep section with a brief "Outreach" or "Other" note if relevant (e.g., LinkedIn activity, CRM updates, tools built).
+
+STYLE RULES:
+- Keep it SHORT. The entire update should be scannable in under 2 minutes.
+- No headers like "Meeting Recap" or "Action Items" — just flow naturally per rep.
+- No pipeline numbers or KPI tables — that's for the biweekly scorecard.
+- Write in sentence fragments where possible. Cut filler words.
+- Bold contact/company names. Use line breaks between points, not nested bullets.
+- If a deal has a dollar amount or size metric (lives, caregivers, etc.), include it.
+- Tone: direct, informal, like briefing notes from a trusted assistant.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: WEEKLY_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_tokens: 4096,
+    max_tokens: 2048,
   });
 
   return response.choices[0]?.message?.content || "Failed to generate report.";
@@ -184,7 +191,7 @@ For EACH rep, extract from Fireflies meeting transcripts and summaries:
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: SCORECARD_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
     max_tokens: 4096,
@@ -216,7 +223,7 @@ Generate a report addressing the user's specific request. ALWAYS separate data b
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: SCORECARD_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
     max_tokens: 4096,
@@ -248,7 +255,7 @@ Generate a report addressing the user's specific request. ALWAYS separate data b
   return openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: SCORECARD_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
     max_tokens: 4096,

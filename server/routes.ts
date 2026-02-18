@@ -257,6 +257,11 @@ export async function registerRoutes(
           if (!m.meetingDate) return true;
           return new Date(m.meetingDate) >= thirtyDaysAgo;
         })
+        .sort((a, b) => {
+          const da = a.meetingDate ? new Date(a.meetingDate).getTime() : 0;
+          const db = b.meetingDate ? new Date(b.meetingDate).getTime() : 0;
+          return db - da;
+        })
         .map(m => ({
           id: m.id,
           firefliesId: m.firefliesId,
