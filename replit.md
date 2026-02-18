@@ -26,8 +26,9 @@ server/routes.ts          - All API endpoints
 server/services/
   hubspot.ts              - HubSpot sync service
   fireflies.ts            - Fireflies sync service  
-  metrics.ts              - Metrics computation for reports
+  metrics.ts              - Metrics computation for reports (per-rep breakdown)
   ai-reports.ts           - AI report generation (weekly, biweekly, custom, streaming)
+  pdf-report.ts           - PDF generation from report content using pdfkit
   scheduler.ts            - Background cron jobs
 client/src/
   lib/context.tsx          - React context with real API calls via react-query
@@ -44,7 +45,7 @@ client/src/
 - GET/POST /api/settings - Goals/targets
 - GET /api/connections, POST /api/connections/:service/connect|disconnect
 - POST /api/sync/hubspot, POST /api/sync/fireflies, GET /api/sync/logs
-- GET /api/reports, GET /api/reports/:id, POST /api/reports/generate/weekly|biweekly, POST /api/reports/:id/send
+- GET /api/reports, GET /api/reports/:id, GET /api/reports/:id/pdf, POST /api/reports/generate/weekly|biweekly, POST /api/reports/:id/send
 - POST /api/chat - Streaming AI chat (SSE)
 
 ## Required Secrets
@@ -52,4 +53,6 @@ client/src/
 - FIREFLIES_API_KEY - Fireflies API key
 
 ## Recent Changes
+- 2026-02-18: PDF report generation (pdfkit), per-rep metrics breakdown (Deb/Dovi), improved AI prompts with rep separation, markdown rendering on Reports page
+- 2026-02-18: Connection flow with API key validation, sync timestamp tracking, config preservation during syncs
 - 2026-02-17: Initial full build - schema, storage, services, API routes, frontend connected to real APIs

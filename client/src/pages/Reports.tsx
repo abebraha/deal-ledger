@@ -1,13 +1,14 @@
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Mail, Loader2, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import ReactMarkdown from "react-markdown";
 
 interface Report {
   id: number;
@@ -71,13 +72,17 @@ export function Reports() {
 
   const isGenerating = generateWeekly.isPending || generateBiweekly.isPending;
 
+  const handleDownloadPDF = (report: Report) => {
+    window.open(`/api/reports/${report.id}/pdf`, "_blank");
+  };
+
   return (
     <Layout>
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight font-display">Reports Archive</h1>
-            <p className="text-muted-foreground mt-2">View past AI-generated reports and scorecards.</p>
+            <h1 className="text-3xl font-bold tracking-tight font-display" data-testid="text-reports-title">Reports</h1>
+            <p className="text-muted-foreground mt-2">Generate and download AI-powered sales reports.</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -87,7 +92,7 @@ export function Reports() {
               data-testid="button-generate-biweekly"
             >
               {generateBiweekly.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Bi-Weekly Report
+              Bi-Weekly Scorecard
             </Button>
             <Button
               onClick={() => generateWeekly.mutate()}
@@ -105,7 +110,7 @@ export function Reports() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : reports.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="text-center py-12 text-muted-foreground" data-testid="text-no-reports">
             No reports yet. Generate your first report above.
           </div>
         ) : (
@@ -123,9 +128,11 @@ export function Reports() {
                     <div>
                       <h3 className="font-semibold">{report.title}</h3>
                       <div className="text-sm text-muted-foreground flex items-center gap-2">
-                        <span>{format(new Date(report.createdAt), "MMM d, yyyy")}</span>
-                        <span>•</span>
-                        <Badge variant="outline" className="text-xs">{report.type}</Badge>
+                        <span>{format(new Date(report.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
+                        <span>·</span>
+                        <Badge variant="outline" className="text-xs">
+                          {report.type === "weekly" ? "Weekly" : report.type === "biweekly" ? "Bi-Weekly" : "Custom"}
+                        </Badge>
                         {report.sentAt && (
                           <Badge variant="secondary" className="text-xs">Sent</Badge>
                         )}
@@ -133,6 +140,15 @@ export function Reports() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); handleDownloadPDF(report); }}
+                      data-testid={`button-download-pdf-${report.id}`}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      PDF
+                    </Button>
                     {!report.sentAt && (
                       <Button
                         variant="ghost"
@@ -154,8 +170,24 @@ export function Reports() {
                 </div>
                 {expandedId === report.id && (
                   <CardContent className="pt-0 border-t">
-                    <div className="prose prose-sm max-w-none whitespace-pre-wrap mt-4" data-testid={`text-report-content-${report.id}`}>
-                      {report.content}
+                    <div className="prose prose-sm max-w-none mt-4 dark:prose-invert" data-testid={`text-report-content-${report.id}`}>
+                      <ReactMarkdown
+                        components={{
+                          h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-3 pb-2 border-b">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-2 text-primary">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
+                          h4: ({ children }) => <h4 className="text-base font-semibold mt-3 mb-1">{children}</h4>,
+                          hr: () => <hr className="my-4 border-border" />,
+                          ul: ({ children }) => <ul className="list-disc pl-5 space-y-1 my-2">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1 my-2">{children}</ol>,
+                          li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
+                          p: ({ children }) => <p className="text-sm leading-relaxed my-2">{children}</p>,
+                          strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{children}</a>,
+                        }}
+                      >
+                        {report.content}
+                      </ReactMarkdown>
                     </div>
                   </CardContent>
                 )}

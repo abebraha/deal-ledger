@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { syncHubSpot } from "./services/hubspot";
 import { syncFireflies } from "./services/fireflies";
 import { generateWeeklyEmail, generateBiweeklyScorecard, streamCustomReport } from "./services/ai-reports";
+import { generateReportPDF } from "./services/pdf-report";
 import { startScheduler } from "./services/scheduler";
 import { z } from "zod";
 
@@ -265,6 +266,28 @@ export async function registerRoutes(
     try {
       await storage.markReportSent(parseInt(req.params.id));
       res.json({ success: true, message: "Report marked as sent (email delivery mocked)" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/reports/:id/pdf", async (req, res) => {
+    try {
+      const report = await storage.getReport(parseInt(req.params.id));
+      if (!report) return res.status(404).json({ error: "Report not found" });
+
+      const filename = (report.title.replace(/[^a-zA-Z0-9 ]/g, "") || "Report").trim();
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
+
+      generateReportPDF({
+        title: report.title,
+        type: report.type,
+        content: report.content,
+        periodStart: report.periodStart,
+        periodEnd: report.periodEnd,
+        createdAt: report.createdAt.toISOString(),
+      }, res);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

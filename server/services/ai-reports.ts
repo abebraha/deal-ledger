@@ -13,11 +13,14 @@ RULES:
 - All metrics you cite MUST come from the structured data provided. Never invent numbers.
 - When referencing a deal, include the deal name and amount.
 - When referencing a commitment from Fireflies, include the meeting title and any URL if available.
-- Use clear section headers.
+- Use clear markdown section headers (## and ###).
 - Be concise but thorough.
 - Use bullet points for lists.
 - Include actionable recommendations.
-- Flag any overdue commitments prominently.`;
+- Flag any overdue commitments prominently.
+- CRITICAL: Every report MUST have separate sections for each sales rep. Present each rep's data independently so the CEO can evaluate each person's performance.
+- Use --- horizontal rules between major sections for visual separation.
+- Format numbers with commas for readability (e.g., $125,000 not $125000).`;
 
 export async function generateWeeklyEmail(): Promise<string> {
   const metrics = await computeMetricsForReport();
@@ -27,22 +30,42 @@ export async function generateWeeklyEmail(): Promise<string> {
 DATA:
 ${JSON.stringify(metrics, null, 2)}
 
-Format as an email with:
-1. Subject line
-2. Executive summary (2-3 sentences)
-3. Revenue & Pipeline section with exact numbers
-4. Activity metrics vs goals
-5. Commitment Ledger update (overdue items flagged)
-6. Key deals to watch
-7. Recommended actions for the week`;
+Format as a professional report with markdown formatting:
+
+## Subject Line
+A clear, data-driven subject line
+
+## Executive Summary
+2-3 sentence overview of the week
+
+## Overall Revenue & Pipeline
+- Total pipeline value, weighted pipeline, deals won this period
+- Brief trend commentary
+
+## Rep Performance: [Rep Name]
+(Repeat this section for EACH rep in the data: ${metrics.repNames.join(", ")})
+For each rep include:
+- Open pipeline value and deal count
+- Weighted pipeline
+- Revenue won
+- Activity count and breakdown
+- Key deals to watch (top 3 by amount)
+- Overdue commitments (if any, flag prominently)
+
+## Commitment Ledger
+- Overdue items grouped by rep
+- Recent commitments status
+
+## Recommended Actions
+- Specific, actionable items for the week ahead`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-5.2",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_completion_tokens: 4096,
+    max_tokens: 4096,
   });
 
   return response.choices[0]?.message?.content || "Failed to generate report.";
@@ -56,24 +79,46 @@ export async function generateBiweeklyScorecard(): Promise<string> {
 DATA:
 ${JSON.stringify(metrics, null, 2)}
 
-Format as a formal scorecard with:
-1. Title: "CEO Scorecard - Biweekly Review"
-2. Overall Health Score (Red/Yellow/Green based on data)
-3. Revenue Performance vs Target
-4. Pipeline Health Analysis
-5. Activity Metrics Dashboard
-6. Commitment Compliance (compare Fireflies commitments against HubSpot KPIs)
-7. Team Performance Summary
-8. Risk Flags and Blockers
-9. Strategic Recommendations`;
+Format as a formal scorecard with markdown formatting:
+
+## CEO Scorecard — Biweekly Review
+
+### Overall Health Score
+Rate as Green/Yellow/Red based on the data, with brief justification
+
+### Revenue Performance
+- Revenue vs target (if available)
+- Pipeline coverage ratio
+- Win rate trends
+
+---
+
+### Rep Scorecard: [Rep Name]
+(Repeat this section for EACH rep: ${metrics.repNames.join(", ")})
+For each rep include:
+- Pipeline Summary: open deals count, total value, weighted value
+- Activity Dashboard: calls, emails, meetings, tasks
+- Top Deals: top 3-5 deals by amount with stage and close date
+- Commitment Compliance: pending vs completed vs overdue
+- Performance Rating: Green/Yellow/Red with brief commentary
+
+---
+
+### Risk Flags & Blockers
+- Deals at risk (stale, low activity, approaching close date)
+- Overdue commitments by rep
+
+### Strategic Recommendations
+- Specific actions for each rep
+- Overall team recommendations`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-5.2",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_completion_tokens: 4096,
+    max_tokens: 4096,
   });
 
   return response.choices[0]?.message?.content || "Failed to generate scorecard.";
@@ -89,21 +134,24 @@ export async function generateCustomReport(userPrompt: string): Promise<string> 
 AVAILABLE DATA:
 KPIs: ${JSON.stringify(metrics.kpis, null, 2)}
 
+REP BREAKDOWN:
+${JSON.stringify(metrics.byRep, null, 2)}
+
 ALL DEALS:
 ${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
 
 COMMITMENT LEDGER:
 ${JSON.stringify(allCommitments.map(c => ({ content: c.content, type: c.type, owner: c.owner, status: c.status, dueDate: c.dueDate, meetingTitle: c.meetingTitle, meetingDate: c.meetingDate, firefliesUrl: c.firefliesUrl, snippet: c.snippet })), null, 2)}
 
-Generate a report addressing the user's specific request. Include evidence from the data with specific deal names, amounts, and commitment references.`;
+Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and commitment references. Use markdown formatting with clear headers.`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-5.2",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_completion_tokens: 4096,
+    max_tokens: 4096,
   });
 
   return response.choices[0]?.message?.content || "Failed to generate custom report.";
@@ -119,21 +167,24 @@ export async function streamCustomReport(userPrompt: string) {
 AVAILABLE DATA:
 KPIs: ${JSON.stringify(metrics.kpis, null, 2)}
 
+REP BREAKDOWN:
+${JSON.stringify(metrics.byRep, null, 2)}
+
 ALL DEALS:
 ${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
 
 COMMITMENT LEDGER:
 ${JSON.stringify(allCommitments.map(c => ({ content: c.content, type: c.type, owner: c.owner, status: c.status, dueDate: c.dueDate, meetingTitle: c.meetingTitle, meetingDate: c.meetingDate, firefliesUrl: c.firefliesUrl, snippet: c.snippet })), null, 2)}
 
-Generate a report addressing the user's specific request. Include evidence from the data with specific deal names, amounts, and commitment references.`;
+Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and commitment references. Use markdown formatting with clear headers.`;
 
   return openai.chat.completions.create({
-    model: "gpt-5.2",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_completion_tokens: 4096,
+    max_tokens: 4096,
     stream: true,
   });
 }
