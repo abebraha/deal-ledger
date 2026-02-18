@@ -305,9 +305,25 @@ class DatabaseStorage implements IStorage {
     const pipelineValue = openDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
     const weightedPipeline = openDeals.reduce((sum, d) => sum + (d.amount || 0) * ((d.probability || 0) / 100), 0);
 
-    const calls = allActivities.filter(a => a.type === "CALL" || a.type === "call");
-    const emails = allActivities.filter(a => a.type === "EMAIL" || a.type === "email");
-    const meetingsHeld = allMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weekStartStr = weekStart.toISOString();
+
+    const thisWeekActivities = allActivities.filter(a => {
+      if (!a.activityDate) return false;
+      return a.activityDate >= weekStartStr;
+    });
+
+    const thisWeekMeetings = allMeetings.filter(m => {
+      if (!m.startTime) return false;
+      return m.startTime >= weekStartStr;
+    });
+
+    const calls = thisWeekActivities.filter(a => a.type === "CALL" || a.type === "call");
+    const emails = thisWeekActivities.filter(a => a.type === "EMAIL" || a.type === "email");
+    const meetingsHeld = thisWeekMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
 
     const monthlyRevenueGoal = parseInt(allSettings.hubspotRevenueGoal || allSettings.monthlyRevenueGoal || "100000");
     const weeklyMeetingsGoal = parseInt(allSettings.weeklyMeetingsGoal || "15");
