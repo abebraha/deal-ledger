@@ -3,10 +3,12 @@ import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import {
   deals, activities, meetings, commitments, settings,
   reports, syncLogs, connections, conversations, messages,
+  firefliesMeetings,
   type Deal, type InsertDeal,
   type Activity, type InsertActivity,
   type Meeting, type InsertMeeting,
   type Commitment, type InsertCommitment,
+  type FirefliesMeeting, type InsertFirefliesMeeting,
   type Report, type InsertReport,
   type Connection,
 } from "@shared/schema";
@@ -57,6 +59,10 @@ export interface IStorage {
   deleteConversation(id: number): Promise<void>;
   getMessages(conversationId: number): Promise<any[]>;
   createMessage(conversationId: number, role: string, content: string): Promise<any>;
+
+  // Fireflies Meetings
+  getFirefliesMeetings(): Promise<FirefliesMeeting[]>;
+  upsertFirefliesMeeting(meeting: InsertFirefliesMeeting): Promise<FirefliesMeeting>;
 
   // Metrics (deterministic computations)
   computeKPIs(startDate?: string, endDate?: string): Promise<any>;
@@ -258,6 +264,23 @@ class DatabaseStorage implements IStorage {
   async createMessage(conversationId: number, role: string, content: string) {
     const [msg] = await db.insert(messages).values({ conversationId, role, content }).returning();
     return msg;
+  }
+
+  // ─── Fireflies Meetings ───
+  async getFirefliesMeetings() {
+    return db.select().from(firefliesMeetings).orderBy(desc(firefliesMeetings.createdAt));
+  }
+
+  async upsertFirefliesMeeting(meeting: InsertFirefliesMeeting) {
+    if (meeting.firefliesId) {
+      const [existing] = await db.select().from(firefliesMeetings).where(eq(firefliesMeetings.firefliesId, meeting.firefliesId));
+      if (existing) {
+        const [updated] = await db.update(firefliesMeetings).set(meeting).where(eq(firefliesMeetings.firefliesId, meeting.firefliesId)).returning();
+        return updated;
+      }
+    }
+    const [created] = await db.insert(firefliesMeetings).values(meeting).returning();
+    return created;
   }
 
   // ─── Deterministic KPI Computation ───

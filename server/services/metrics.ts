@@ -5,6 +5,8 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
   const allDeals = await storage.getDeals();
   const allCommitments = await storage.getCommitments();
   const allActivities = await storage.getActivities();
+  const allMeetings = await storage.getMeetings();
+  const firefliesMtgs = await storage.getFirefliesMeetings();
 
   const openDeals = allDeals
     .filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost")
@@ -55,6 +57,7 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     const repActivities = allActivities.filter(a => matchesRep(a.owner, rep));
     const repCommitments = allCommitments.filter(c => matchesRep(c.owner, rep));
     const repOverdue = repCommitments.filter(c => c.status === "pending" && c.dueDate && new Date(c.dueDate) < new Date());
+    const repMeetings = allMeetings.filter(m => matchesRep(m.owner, rep));
 
     byRep[rep] = {
       openDeals: repOpen.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate })),
@@ -64,11 +67,26 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
       revenueWon: repWon.reduce((sum, d) => sum + (d.amount || 0), 0),
       totalActivities: repActivities.length,
       activitiesByType: countByType(repActivities),
+      meetingsHeld: repMeetings.length,
+      meetings: repMeetings.slice(0, 10).map(m => ({ title: m.title, startTime: m.startTime, outcome: m.outcome })),
       commitments: repCommitments.slice(0, 10).map(c => ({ content: c.content, status: c.status, dueDate: c.dueDate, meetingTitle: c.meetingTitle, type: c.type })),
       overdueCommitments: repOverdue.map(c => ({ content: c.content, dueDate: c.dueDate, meetingTitle: c.meetingTitle })),
       overdueCount: repOverdue.length,
     };
   }
+
+  const recentFirefliesMeetings = firefliesMtgs
+    .slice(0, 20)
+    .map(m => ({
+      title: m.title,
+      date: m.meetingDate,
+      duration: m.duration,
+      participants: m.participants,
+      summary: m.summary,
+      outline: m.outline,
+      keywords: m.keywords,
+      transcriptSnippet: m.transcript ? m.transcript.substring(0, 2000) : null,
+    }));
 
   return {
     kpis,
@@ -77,6 +95,7 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     recentCommitments,
     byRep,
     repNames,
+    recentFirefliesMeetings,
     generatedAt: new Date().toISOString(),
   };
 }

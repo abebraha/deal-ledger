@@ -4,7 +4,6 @@ import { log } from "../index";
 const FIREFLIES_API = "https://api.fireflies.ai/graphql";
 
 export async function syncFireflies(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
-  // Try database config first, then env var
   let apiKey = process.env.FIREFLIES_API_KEY;
   try {
     const conn = await storage.getConnection("fireflies");
@@ -38,6 +37,7 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
             keywords
             outline
             overview
+            shorthand_bullet
           }
         }
       }
@@ -61,8 +61,34 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
 
     for (const transcript of transcripts) {
       const meetingDate = transcript.date ? new Date(transcript.date * 1000).toISOString().split("T")[0] : null;
+      const participants = Array.isArray(transcript.participants)
+        ? transcript.participants.join(", ")
+        : transcript.participants || "";
 
-      // Extract action items as commitments
+      const summaryText = transcript.summary?.overview || "";
+      const outline = transcript.summary?.outline || transcript.summary?.shorthand_bullet || "";
+      const keywords = Array.isArray(transcript.summary?.keywords)
+        ? transcript.summary.keywords.join(", ")
+        : transcript.summary?.keywords || "";
+
+      const transcriptSnippet = (transcript.sentences || [])
+        .slice(0, 100)
+        .map((s: any) => `${s.speaker_name}: ${s.text}`)
+        .join("\n");
+
+      await storage.upsertFirefliesMeeting({
+        firefliesId: transcript.id,
+        title: transcript.title || "Untitled Meeting",
+        meetingDate,
+        duration: transcript.duration || null,
+        participants,
+        summary: summaryText,
+        outline: typeof outline === "string" ? outline : JSON.stringify(outline),
+        keywords,
+        transcript: transcriptSnippet || null,
+      });
+      recordsProcessed++;
+
       const actionItems = transcript.action_items || transcript.summary?.action_items || [];
       
       if (Array.isArray(actionItems)) {
@@ -83,7 +109,6 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
         }
       }
 
-      // Extract key decisions from summary
       if (transcript.summary?.overview) {
         await storage.upsertCommitment({
           firefliesMeetingId: transcript.id,
@@ -100,7 +125,7 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
 
     const existingConn = await storage.getConnection("fireflies");
     await storage.upsertConnection("fireflies", true, existingConn?.config, true);
-    await storage.createSyncLog("fireflies", "completed", `Synced ${recordsProcessed} records`, recordsProcessed);
+    await storage.createSyncLog("fireflies", "completed", `Synced ${recordsProcessed} records (${transcripts.length} meetings)`, recordsProcessed);
 
     return { success: true, recordsProcessed };
   } catch (error: any) {

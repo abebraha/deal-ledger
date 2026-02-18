@@ -91,6 +91,21 @@ export const commitments = pgTable("commitments", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ─── Fireflies Meeting Summaries ───
+export const firefliesMeetings = pgTable("fireflies_meetings", {
+  id: serial("id").primaryKey(),
+  firefliesId: text("fireflies_id").unique(),
+  title: text("title"),
+  meetingDate: text("meeting_date"),
+  duration: integer("duration"),
+  participants: text("participants"),
+  summary: text("summary"),
+  outline: text("outline"),
+  keywords: text("keywords"),
+  transcript: text("transcript"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 // ─── Settings (goals/targets) ───
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
@@ -138,6 +153,7 @@ export const insertDealSchema = createInsertSchema(deals).omit({ id: true, creat
 export const insertActivitySchema = createInsertSchema(activities).omit({ id: true, createdAt: true });
 export const insertMeetingSchema = createInsertSchema(meetings).omit({ id: true, createdAt: true });
 export const insertCommitmentSchema = createInsertSchema(commitments).omit({ id: true, createdAt: true });
+export const insertFirefliesMeetingSchema = createInsertSchema(firefliesMeetings).omit({ id: true, createdAt: true });
 export const insertSettingsSchema = createInsertSchema(settings).omit({ id: true, updatedAt: true });
 export const insertReportSchema = createInsertSchema(reports).omit({ id: true, createdAt: true });
 export const insertSyncLogSchema = createInsertSchema(syncLogs).omit({ id: true, startedAt: true });
@@ -154,6 +170,8 @@ export type Meeting = typeof meetings.$inferSelect;
 export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
 export type Commitment = typeof commitments.$inferSelect;
 export type InsertCommitment = z.infer<typeof insertCommitmentSchema>;
+export type FirefliesMeeting = typeof firefliesMeetings.$inferSelect;
+export type InsertFirefliesMeeting = z.infer<typeof insertFirefliesMeetingSchema>;
 export type Setting = typeof settings.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type InsertReport = z.infer<typeof insertReportSchema>;
