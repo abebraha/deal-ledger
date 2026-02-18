@@ -65,27 +65,6 @@ export async function registerRoutes(
     }
   });
 
-  // ─── Commitments ───
-  app.get("/api/commitments", async (req, res) => {
-    try {
-      const status = req.query.status as string | undefined;
-      const all = await storage.getCommitments(status);
-      res.json(all);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.patch("/api/commitments/:id/status", async (req, res) => {
-    try {
-      const { status } = req.body;
-      await storage.updateCommitmentStatus(parseInt(req.params.id), status);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   // ─── Settings ───
   app.get("/api/settings", async (_req, res) => {
     try {

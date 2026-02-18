@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<{ role: "user" | "ai"; content: string }[]>([
-    { role: "ai", content: "Hello! I can generate custom reports on your pipeline, commitments, and team performance. What would you like to see?" }
+    { role: "ai", content: "Hello! I can generate custom reports on your pipeline, activities, and team performance. What would you like to see?" }
   ]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -125,7 +125,7 @@ export function ChatInterface() {
         <div className="p-4 border-t bg-background">
           <div className="flex gap-2">
             <Input 
-              placeholder="Ask for a report (e.g., 'Show me deals closing next month with overdue commitments')" 
+              placeholder="Ask for a report (e.g., 'Show me deals closing next month' or 'What has Deb been working on?')" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}

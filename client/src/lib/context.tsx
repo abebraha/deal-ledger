@@ -19,27 +19,10 @@ export interface Deal {
   updatedAt: string;
 }
 
-export interface Commitment {
-  id: number;
-  firefliesMeetingId: string | null;
-  meetingDate: string | null;
-  meetingTitle: string | null;
-  type: string;
-  content: string;
-  owner: string | null;
-  dueDate: string | null;
-  status: string;
-  dealId: number | null;
-  firefliesUrl: string | null;
-  snippet: string | null;
-  createdAt: string;
-}
-
 export interface KPIs {
   revenue: { total: number; goal: number; attainment: number };
   pipeline: { total: number; weighted: number; dealCount: number };
   activity: { calls: number; emails: number; meetingsHeld: number; meetingsGoal: number; outboundGoal: number; totalOutbound: number };
-  commitments: { total: number; pending: number; completed: number; overdue: number };
   deals: { total: number; closedWon: number; open: number };
 }
 
@@ -57,7 +40,6 @@ export interface ConnectionsData {
 
 interface AppContextType {
   deals: Deal[];
-  commitments: Commitment[];
   settings: Record<string, string>;
   kpis: KPIs | null;
   connections: ConnectionsData | null;
@@ -71,7 +53,6 @@ interface AppContextType {
   syncHubspot: () => void;
   syncFireflies: () => void;
   isSyncing: boolean;
-  updateCommitmentStatus: (id: number, status: string) => void;
   refetchAll: () => void;
 }
 
@@ -82,10 +63,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-  });
-
-  const { data: commitments = [], isLoading: commitmentsLoading } = useQuery<Commitment[]>({
-    queryKey: ["/api/commitments"],
   });
 
   const { data: kpis = null, isLoading: kpisLoading } = useQuery<KPIs>({
@@ -101,7 +78,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const isConnected = !!(connections?.hubspot?.connected && connections?.fireflies?.connected);
-  const isLoading = dealsLoading || commitmentsLoading || kpisLoading || settingsLoading || connectionsLoading;
+  const isLoading = dealsLoading || kpisLoading || settingsLoading || connectionsLoading;
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: Record<string, string>) => {
@@ -129,7 +106,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/connections"] });
       qc.invalidateQueries({ queryKey: ["/api/deals"] });
-      qc.invalidateQueries({ queryKey: ["/api/commitments"] });
       qc.invalidateQueries({ queryKey: ["/api/kpis"] });
     },
   });
@@ -159,25 +135,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await apiRequest("POST", "/api/sync/fireflies");
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/commitments"] });
       qc.invalidateQueries({ queryKey: ["/api/kpis"] });
       qc.invalidateQueries({ queryKey: ["/api/connections"] });
     },
   });
 
-  const updateCommitmentStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      await apiRequest("PATCH", `/api/commitments/${id}/status`, { status });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/commitments"] });
-      qc.invalidateQueries({ queryKey: ["/api/kpis"] });
-    },
-  });
-
   const refetchAll = () => {
     qc.invalidateQueries({ queryKey: ["/api/deals"] });
-    qc.invalidateQueries({ queryKey: ["/api/commitments"] });
     qc.invalidateQueries({ queryKey: ["/api/kpis"] });
     qc.invalidateQueries({ queryKey: ["/api/settings"] });
     qc.invalidateQueries({ queryKey: ["/api/connections"] });
@@ -188,7 +152,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       deals,
-      commitments,
       settings,
       kpis,
       connections,
@@ -202,7 +165,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncHubspot: () => syncHubspotMutation.mutate(),
       syncFireflies: () => syncFirefliesMutation.mutate(),
       isSyncing,
-      updateCommitmentStatus: (id, status) => updateCommitmentStatusMutation.mutate({ id, status }),
       refetchAll,
     }}>
       {children}

@@ -1,13 +1,12 @@
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import {
-  deals, activities, meetings, commitments, settings,
+  deals, activities, meetings, settings,
   reports, syncLogs, connections, conversations, messages,
   firefliesMeetings,
   type Deal, type InsertDeal,
   type Activity, type InsertActivity,
   type Meeting, type InsertMeeting,
-  type Commitment, type InsertCommitment,
   type FirefliesMeeting, type InsertFirefliesMeeting,
   type Report, type InsertReport,
   type Connection,
@@ -27,11 +26,6 @@ export interface IStorage {
   // Meetings
   getMeetings(dealId?: number): Promise<Meeting[]>;
   upsertMeeting(meeting: InsertMeeting): Promise<Meeting>;
-  
-  // Commitments
-  getCommitments(status?: string): Promise<Commitment[]>;
-  upsertCommitment(commitment: InsertCommitment): Promise<Commitment>;
-  updateCommitmentStatus(id: number, status: string): Promise<void>;
   
   // Settings
   getSetting(key: string): Promise<string | undefined>;
@@ -134,23 +128,6 @@ class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(meetings).values(meeting).returning();
     return created;
-  }
-
-  // ─── Commitments ───
-  async getCommitments(status?: string) {
-    if (status) {
-      return db.select().from(commitments).where(eq(commitments.status, status)).orderBy(desc(commitments.createdAt));
-    }
-    return db.select().from(commitments).orderBy(desc(commitments.createdAt));
-  }
-
-  async upsertCommitment(commitment: InsertCommitment) {
-    const [created] = await db.insert(commitments).values(commitment).returning();
-    return created;
-  }
-
-  async updateCommitmentStatus(id: number, status: string) {
-    await db.update(commitments).set({ status }).where(eq(commitments.id, id));
   }
 
   // ─── Settings ───
@@ -288,7 +265,6 @@ class DatabaseStorage implements IStorage {
     const allDeals = await this.getDeals();
     const allActivities = await this.getActivities();
     const allMeetings = await this.getMeetings();
-    const allCommitments = await this.getCommitments();
     const allSettings = await this.getAllSettings();
 
     const closedWon = allDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
@@ -301,13 +277,6 @@ class DatabaseStorage implements IStorage {
     const calls = allActivities.filter(a => a.type === "CALL" || a.type === "call");
     const emails = allActivities.filter(a => a.type === "EMAIL" || a.type === "email");
     const meetingsHeld = allMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
-
-    const pendingCommitments = allCommitments.filter(c => c.status === "pending");
-    const completedCommitments = allCommitments.filter(c => c.status === "completed");
-    const overdueCommitments = allCommitments.filter(c => {
-      if (c.status !== "pending" || !c.dueDate) return false;
-      return new Date(c.dueDate) < new Date();
-    });
 
     const monthlyRevenueGoal = parseInt(allSettings.hubspotRevenueGoal || allSettings.monthlyRevenueGoal || "100000");
     const weeklyMeetingsGoal = parseInt(allSettings.weeklyMeetingsGoal || "15");
@@ -332,12 +301,6 @@ class DatabaseStorage implements IStorage {
         outboundGoal: weeklyOutboundGoal,
         totalOutbound: calls.length + emails.length,
       },
-      commitments: {
-        total: allCommitments.length,
-        pending: pendingCommitments.length,
-        completed: completedCommitments.length,
-        overdue: overdueCommitments.length,
-      },
       deals: {
         total: allDeals.length,
         closedWon: closedWon.length,
@@ -356,9 +319,9 @@ export async function cleanupNonRepData() {
     sql`(${deals.owner} IS NULL OR (LOWER(${deals.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${deals.owner}) NOT LIKE ${repPatterns[1]}))`
   );
   await db.delete(activities).where(
-    sql`(${activities.owner} IS NULL OR (LOWER(${activities.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${activities.owner}) NOT LIKE ${repPatterns[1]}))`
+    sql`(${activities.owner} IS NOT NULL AND LOWER(${activities.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${activities.owner}) NOT LIKE ${repPatterns[1]})`
   );
   await db.delete(meetings).where(
-    sql`(${meetings.owner} IS NULL OR (LOWER(${meetings.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${meetings.owner}) NOT LIKE ${repPatterns[1]}))`
+    sql`(${meetings.owner} IS NOT NULL AND LOWER(${meetings.owner}) NOT LIKE ${repPatterns[0]} AND LOWER(${meetings.owner}) NOT LIKE ${repPatterns[1]})`
   );
 }

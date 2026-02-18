@@ -164,12 +164,12 @@ export function Connections() {
                   <XCircle className="text-muted-foreground h-6 w-6" data-testid="icon-fireflies-disconnected" />
                 )}
               </CardTitle>
-              <CardDescription>AI notetaker for extracting commitments and action items.</CardDescription>
+              <CardDescription>AI notetaker for extracting meeting context and insights.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="text-sm text-muted-foreground">
-                  Syncs: Meeting Transcripts, Action Items, Decisions, Due Dates.
+                  Syncs: Meeting Transcripts, Summaries, Keywords, Insights.
                 </div>
 
                 {!firefliesConnected ? (

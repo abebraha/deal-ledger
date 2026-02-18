@@ -12,12 +12,10 @@ const SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. Y
 RULES:
 - All metrics you cite MUST come from the structured data provided. Never invent numbers.
 - When referencing a deal, include the deal name and amount.
-- When referencing a commitment from Fireflies, include the meeting title and any URL if available.
 - Use clear markdown section headers (## and ###).
 - Be concise but thorough.
 - Use bullet points for lists.
 - Include actionable recommendations.
-- Flag any overdue commitments prominently.
 - CRITICAL: Every report MUST have separate sections for each sales rep. Present each rep's data independently so the CEO can evaluate each person's performance.
 - Use --- horizontal rules between major sections for visual separation.
 - Format numbers with commas for readability (e.g., $125,000 not $125000).
@@ -53,7 +51,6 @@ For each rep include:
 - Activity count and breakdown (calls, emails, meetings, tasks)
 - Meetings held this period
 - Key deals to watch (top 3 by amount)
-- Overdue commitments (if any, flag prominently)
 
 ## Notable Activities & Context
 For EACH rep, review the Fireflies meeting transcripts and summaries to highlight:
@@ -63,10 +60,6 @@ For EACH rep, review the Fireflies meeting transcripts and summaries to highligh
 - Customer-facing activities beyond standard deal work
 - Any other context that explains what each rep has been focused on
 - This section is CRITICAL - the CEO needs to understand what reps are doing beyond just deal numbers
-
-## Commitment Ledger
-- Overdue items grouped by rep
-- Recent commitments status
 
 ## Recommended Actions
 - Specific, actionable items for the week ahead`;
@@ -111,7 +104,6 @@ For each rep include:
 - Pipeline Summary: open deals count, total value, weighted value
 - Activity Dashboard: calls, emails, meetings, tasks
 - Top Deals: top 3-5 deals by amount with stage and close date
-- Commitment Compliance: pending vs completed vs overdue
 - Performance Rating: Green/Yellow/Red with brief commentary
 
 ---
@@ -127,7 +119,6 @@ For EACH rep, extract from Fireflies meeting transcripts and summaries:
 
 ### Risk Flags & Blockers
 - Deals at risk (stale, low activity, approaching close date)
-- Overdue commitments by rep
 
 ### Strategic Recommendations
 - Specific actions for each rep
@@ -148,7 +139,6 @@ For EACH rep, extract from Fireflies meeting transcripts and summaries:
 export async function generateCustomReport(userPrompt: string): Promise<string> {
   const metrics = await computeMetricsForReport();
   const allDeals = await storage.getDeals();
-  const allCommitments = await storage.getCommitments();
 
   const prompt = `User request: "${userPrompt}"
 
@@ -161,13 +151,10 @@ ${JSON.stringify(metrics.byRep, null, 2)}
 ALL DEALS:
 ${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
 
-COMMITMENT LEDGER:
-${JSON.stringify(allCommitments.map(c => ({ content: c.content, type: c.type, owner: c.owner, status: c.status, dueDate: c.dueDate, meetingTitle: c.meetingTitle, meetingDate: c.meetingDate, firefliesUrl: c.firefliesUrl, snippet: c.snippet })), null, 2)}
-
 FIREFLIES MEETING SUMMARIES (for context on what reps have been working on):
 ${JSON.stringify(metrics.recentFirefliesMeetings, null, 2)}
 
-Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and commitment references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.`;
+Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -184,7 +171,6 @@ Generate a report addressing the user's specific request. ALWAYS separate data b
 export async function streamCustomReport(userPrompt: string) {
   const metrics = await computeMetricsForReport();
   const allDeals = await storage.getDeals();
-  const allCommitments = await storage.getCommitments();
 
   const prompt = `User request: "${userPrompt}"
 
@@ -197,13 +183,10 @@ ${JSON.stringify(metrics.byRep, null, 2)}
 ALL DEALS:
 ${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
 
-COMMITMENT LEDGER:
-${JSON.stringify(allCommitments.map(c => ({ content: c.content, type: c.type, owner: c.owner, status: c.status, dueDate: c.dueDate, meetingTitle: c.meetingTitle, meetingDate: c.meetingDate, firefliesUrl: c.firefliesUrl, snippet: c.snippet })), null, 2)}
-
 FIREFLIES MEETING SUMMARIES (for context on what reps have been working on):
 ${JSON.stringify(metrics.recentFirefliesMeetings, null, 2)}
 
-Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and commitment references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.`;
+Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.`;
 
   return openai.chat.completions.create({
     model: "gpt-4o",

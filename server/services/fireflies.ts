@@ -90,36 +90,19 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
       recordsProcessed++;
 
       const actionItems = transcript.action_items || transcript.summary?.action_items || [];
-      
-      if (Array.isArray(actionItems)) {
-        for (const item of actionItems) {
-          const content = typeof item === "string" ? item : item.text || JSON.stringify(item);
-          await storage.upsertCommitment({
-            firefliesMeetingId: transcript.id,
-            meetingDate: meetingDate,
-            meetingTitle: transcript.title || "Untitled Meeting",
-            type: "action_item",
-            content: content,
-            owner: typeof item === "object" ? item.assignee : null,
-            dueDate: typeof item === "object" ? item.due_date : null,
-            status: "pending",
-            firefliesUrl: `https://app.fireflies.ai/view/${transcript.id}`,
+      const actionItemsList = Array.isArray(actionItems) 
+        ? actionItems.map((item: any) => typeof item === "string" ? item : item.text || JSON.stringify(item))
+        : [];
+      if (actionItemsList.length > 0) {
+        const existingMeeting = await storage.getFirefliesMeetings();
+        const match = existingMeeting.find(m => m.firefliesId === transcript.id);
+        if (match) {
+          const enrichedSummary = (match.summary || "") + "\n\nAction Items:\n" + actionItemsList.map((a: string) => `- ${a}`).join("\n");
+          await storage.upsertFirefliesMeeting({
+            ...match,
+            summary: enrichedSummary,
           });
-          recordsProcessed++;
         }
-      }
-
-      if (transcript.summary?.overview) {
-        await storage.upsertCommitment({
-          firefliesMeetingId: transcript.id,
-          meetingDate: meetingDate,
-          meetingTitle: transcript.title || "Untitled Meeting",
-          type: "decision",
-          content: transcript.summary.overview,
-          status: "completed",
-          firefliesUrl: `https://app.fireflies.ai/view/${transcript.id}`,
-        });
-        recordsProcessed++;
       }
     }
 

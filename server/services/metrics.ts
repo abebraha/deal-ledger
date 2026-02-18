@@ -3,7 +3,6 @@ import { storage } from "../storage";
 export async function computeMetricsForReport(periodStart?: string, periodEnd?: string) {
   const kpis = await storage.computeKPIs(periodStart, periodEnd);
   const allDeals = await storage.getDeals();
-  const allCommitments = await storage.getCommitments();
   const allActivities = await storage.getActivities();
   const allMeetings = await storage.getMeetings();
   const firefliesMtgs = await storage.getFirefliesMeetings();
@@ -21,33 +20,7 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
       hubspotUrl: d.hubspotUrl,
     }));
 
-  const overdueCommitments = allCommitments
-    .filter(c => {
-      if (c.status !== "pending" || !c.dueDate) return false;
-      return new Date(c.dueDate) < new Date();
-    })
-    .map(c => ({
-      content: c.content,
-      owner: c.owner,
-      dueDate: c.dueDate,
-      meetingTitle: c.meetingTitle,
-      firefliesUrl: c.firefliesUrl,
-      snippet: c.snippet,
-    }));
-
-  const recentCommitments = allCommitments
-    .slice(0, 20)
-    .map(c => ({
-      content: c.content,
-      owner: c.owner,
-      status: c.status,
-      dueDate: c.dueDate,
-      meetingTitle: c.meetingTitle,
-      type: c.type,
-      firefliesUrl: c.firefliesUrl,
-    }));
-
-  const repNames = extractRepNames(allDeals, allActivities, allCommitments);
+  const repNames = extractRepNames(allDeals, allActivities);
 
   const byRep: Record<string, any> = {};
   for (const rep of repNames) {
@@ -55,8 +28,6 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
     const repOpen = repDeals.filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost");
     const repWon = repDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
     const repActivities = allActivities.filter(a => matchesRep(a.owner, rep));
-    const repCommitments = allCommitments.filter(c => matchesRep(c.owner, rep));
-    const repOverdue = repCommitments.filter(c => c.status === "pending" && c.dueDate && new Date(c.dueDate) < new Date());
     const repMeetings = allMeetings.filter(m => matchesRep(m.owner, rep));
 
     byRep[rep] = {
@@ -69,9 +40,6 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
       activitiesByType: countByType(repActivities),
       meetingsHeld: repMeetings.length,
       meetings: repMeetings.slice(0, 10).map(m => ({ title: m.title, startTime: m.startTime, outcome: m.outcome })),
-      commitments: repCommitments.slice(0, 10).map(c => ({ content: c.content, status: c.status, dueDate: c.dueDate, meetingTitle: c.meetingTitle, type: c.type })),
-      overdueCommitments: repOverdue.map(c => ({ content: c.content, dueDate: c.dueDate, meetingTitle: c.meetingTitle })),
-      overdueCount: repOverdue.length,
     };
   }
 
@@ -91,8 +59,6 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
   return {
     kpis,
     openDeals,
-    overdueCommitments,
-    recentCommitments,
     byRep,
     repNames,
     recentFirefliesMeetings,
@@ -100,11 +66,10 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
   };
 }
 
-function extractRepNames(deals: any[], activities: any[], commitments: any[]): string[] {
+function extractRepNames(deals: any[], activities: any[]): string[] {
   const owners = new Set<string>();
   for (const d of deals) { if (d.owner) owners.add(normalizeRepName(d.owner)); }
   for (const a of activities) { if (a.owner) owners.add(normalizeRepName(a.owner)); }
-  for (const c of commitments) { if (c.owner) owners.add(normalizeRepName(c.owner)); }
 
   const reps = Array.from(owners).filter(name => name.length > 0);
   

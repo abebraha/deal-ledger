@@ -93,7 +93,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
           const engData = await engResponse.json();
           for (const eng of engData.results || []) {
             const ownerName = eng.properties.hubspot_owner_id ? ownerMap[eng.properties.hubspot_owner_id] : null;
-            if (!isRepOwner(ownerName)) continue;
+            if (ownerName && !isRepOwner(ownerName)) continue;
 
             const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
             const body = eng.properties.hs_note_body || "";
@@ -123,7 +123,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         const meetingsData = await meetingsResponse.json();
         for (const mtg of meetingsData.results || []) {
           const ownerName = mtg.properties.hubspot_owner_id ? ownerMap[mtg.properties.hubspot_owner_id] : null;
-          if (!isRepOwner(ownerName)) continue;
+          if (ownerName && !isRepOwner(ownerName)) continue;
 
           await storage.upsertMeeting({
             hubspotId: mtg.id,

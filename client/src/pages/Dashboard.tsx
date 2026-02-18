@@ -1,14 +1,13 @@
 import { Layout } from "@/components/layout/Layout";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { DealTable } from "@/components/dashboard/DealTable";
-import { CommitmentList } from "@/components/dashboard/CommitmentList";
 import { useApp } from "@/lib/context";
-import { DollarSign, Phone, Users, CheckSquare } from "lucide-react";
+import { DollarSign, Phone, Users, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 
 export function Dashboard() {
-  const { deals, commitments, kpis, isConnected, syncHubspot, syncFireflies, isSyncing } = useApp();
+  const { deals, kpis, isConnected, syncHubspot, syncFireflies, isSyncing } = useApp();
   const [, navigate] = useLocation();
 
   const handleRefresh = () => {
@@ -23,7 +22,7 @@ export function Dashboard() {
           <div className="space-y-2">
             <h1 className="text-3xl font-display font-bold">Welcome to DealFlow</h1>
             <p className="text-muted-foreground max-w-md mx-auto">
-              Connect your data sources to start generating insights and tracking commitments.
+              Connect your data sources to start generating insights and tracking performance.
             </p>
           </div>
           <Button size="lg" data-testid="button-connect-sources" onClick={() => navigate("/connections")}>Connect Data Sources</Button>
@@ -68,23 +67,17 @@ export function Dashboard() {
             icon={Phone} 
           />
           <KPICard 
-            title="Open Commitments" 
-            value={kpis?.commitments?.pending ?? 0} 
-            trend={kpis?.commitments?.overdue ? `${kpis.commitments.overdue} overdue` : undefined}
-            trendUp={kpis?.commitments?.overdue === 0}
-            icon={CheckSquare} 
+            title="Outbound Activity" 
+            value={kpis?.activity?.totalOutbound ?? 0} 
+            trend={kpis?.activity?.outboundGoal ? `Goal: ${kpis.activity.outboundGoal}` : undefined}
+            trendUp={kpis?.activity ? kpis.activity.totalOutbound >= kpis.activity.outboundGoal : undefined}
+            icon={BarChart3} 
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-7">
-          <div className="col-span-4 space-y-4">
-            <h2 className="text-xl font-semibold font-display">Active Deals</h2>
-            <DealTable deals={deals.filter(d => d.stage !== "Closed Lost" && d.stage !== "Closed Won")} />
-          </div>
-          <div className="col-span-3 space-y-4">
-            <h2 className="text-xl font-semibold font-display">Commitment Ledger</h2>
-            <CommitmentList commitments={commitments} />
-          </div>
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold font-display">Active Deals</h2>
+          <DealTable deals={deals.filter(d => d.stage !== "Closed Lost" && d.stage !== "Closed Won" && d.stage !== "closedlost" && d.stage !== "closedwon")} />
         </div>
       </div>
     </Layout>
