@@ -7,15 +7,15 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const WEEKLY_SYSTEM_PROMPT = `You are writing brief sales updates for a CEO named Abe. Write like a sharp executive assistant — short, direct, no fluff.
+const WEEKLY_SYSTEM_PROMPT = `You are writing detailed sales updates for a CEO named Abe. Write like a sharp executive assistant — direct, specific, informative.
 
 RULES:
 - All facts MUST come from the data provided. Never invent numbers or names.
-- Be extremely concise. Use short sentences and sentence fragments.
-- NO long paragraphs. Every point should be 1-2 lines max.
+- Be specific and detailed. Include who was spoken to, what was discussed, and what comes next.
+- Each point can be 2-4 lines — enough to convey the full picture.
 - Separate each rep's section clearly.
 - Format numbers with commas (e.g., $125,000).
-- Write in a conversational but professional tone — like a quick briefing, not a formal report.`;
+- Write in a conversational but professional tone — like thorough briefing notes from a trusted assistant.`;
 
 const SCORECARD_SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. You generate clear, data-driven scorecard reports.
 
@@ -61,10 +61,10 @@ export async function generateWeeklyEmail(selectedMeetingIds?: number[]): Promis
     summary: m.summary,
     outline: m.outline,
     keywords: m.keywords,
-    transcriptSnippet: m.transcript ? m.transcript.substring(0, 4000) : null,
+    transcriptSnippet: m.transcript ? m.transcript.substring(0, 6000) : null,
   }));
 
-  const prompt = `Write a short weekly sales update for Abe based on the meeting recordings below.
+  const prompt = `Write a detailed weekly sales update for Abe based on the meeting recordings below.
 
 SELECTED MEETINGS (${meetingsData.length}):
 ${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings selected."}
@@ -94,13 +94,15 @@ What it means or what's next.
 End each rep section with a brief "Outreach" or "Other" note if relevant (e.g., LinkedIn activity, CRM updates, tools built).
 
 STYLE RULES:
-- Keep it SHORT. The entire update should be scannable in under 2 minutes.
+- Be detailed but scannable. Include specifics — names, amounts, next steps, context.
 - No headers like "Meeting Recap" or "Action Items" — just flow naturally per rep.
 - No pipeline numbers or KPI tables — that's for the biweekly scorecard.
-- Write in sentence fragments where possible. Cut filler words.
 - Bold contact/company names. Use line breaks between points, not nested bullets.
 - If a deal has a dollar amount or size metric (lives, caregivers, etc.), include it.
-- Tone: direct, informal, like briefing notes from a trusted assistant.`;
+- Include specific quotes or notable details from transcripts when they add value.
+- For each contact, explain: who they are, what was discussed, what the opportunity is, and what the next step is.
+- Tone: direct, informal, like briefing notes from a trusted assistant.
+- The report should give Abe enough detail to feel fully informed without reading the transcripts himself.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -108,7 +110,7 @@ STYLE RULES:
       { role: "system", content: WEEKLY_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_tokens: 2048,
+    max_tokens: 4096,
   });
 
   return response.choices[0]?.message?.content || "Failed to generate report.";

@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FileText, Mail, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, CalendarDays, BarChart3 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useState } from "react";
+import { useState, useCallback, memo } from "react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -31,6 +31,93 @@ interface FirefliesMeeting {
   duration: number | null;
   participants: string | null;
 }
+
+const formatDurationHelper = (seconds: number | null) => {
+  if (!seconds) return "";
+  const mins = Math.round(seconds / 60);
+  return `${mins}m`;
+};
+
+const MeetingSelector = memo(({
+  meetings,
+  loading,
+  selectedIds,
+  onToggle,
+  onSelectAll,
+  testIdPrefix,
+}: {
+  meetings: FirefliesMeeting[];
+  loading: boolean;
+  selectedIds: number[];
+  onToggle: (id: number) => void;
+  onSelectAll: () => void;
+  testIdPrefix: string;
+}) => (
+  <div className="space-y-3">
+    {loading ? (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading meetings...
+      </div>
+    ) : meetings.length === 0 ? (
+      <p className="text-sm text-muted-foreground py-4" data-testid={`text-no-meetings-${testIdPrefix}`}>
+        No meetings found from the last 30 days. Sync Fireflies to pull in your recordings.
+      </p>
+    ) : (
+      <>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onSelectAll}
+            className="text-sm text-primary hover:underline"
+            data-testid={`button-select-all-${testIdPrefix}`}
+          >
+            {selectedIds.length === meetings.length ? "Deselect all" : "Select all"}
+          </button>
+          <span className="text-sm text-muted-foreground">
+            {selectedIds.length} of {meetings.length} selected
+          </span>
+        </div>
+        <div className="border rounded-md divide-y max-h-[250px] overflow-y-auto">
+          {meetings.map(meeting => (
+            <div
+              key={meeting.id}
+              className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors"
+              data-testid={`${testIdPrefix}-meeting-item-${meeting.id}`}
+              onClick={() => onToggle(meeting.id)}
+            >
+              <Checkbox
+                checked={selectedIds.includes(meeting.id)}
+                tabIndex={-1}
+                data-testid={`${testIdPrefix}-checkbox-meeting-${meeting.id}`}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{meeting.title || "Untitled Meeting"}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {meeting.meetingDate && (
+                    <span>{format(new Date(meeting.meetingDate + "T00:00:00"), "MMM d, yyyy")}</span>
+                  )}
+                  {meeting.duration && (
+                    <>
+                      <span>·</span>
+                      <span>{formatDurationHelper(meeting.duration)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              {meeting.participants && (
+                <span className="text-xs text-muted-foreground hidden sm:block max-w-[200px] truncate">
+                  {meeting.participants}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </>
+    )}
+  </div>
+));
+
+MeetingSelector.displayName = "MeetingSelector";
 
 export function Reports() {
   const qc = useQueryClient();
@@ -94,91 +181,18 @@ export function Reports() {
     window.open(`/api/reports/${report.id}/pdf`, "_blank");
   };
 
-  const formatDuration = (seconds: number | null) => {
-    if (!seconds) return "";
-    const mins = Math.round(seconds / 60);
-    return `${mins}m`;
-  };
-
-  const MeetingSelector = ({
-    selectedIds,
-    onToggle,
-    onSelectAll,
-    label,
-    testIdPrefix,
-  }: {
-    selectedIds: number[];
-    onToggle: (id: number) => void;
-    onSelectAll: () => void;
-    label: string;
-    testIdPrefix: string;
-  }) => (
-    <div className="space-y-3">
-      {meetingsLoading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading meetings...
-        </div>
-      ) : firefliesMeetings.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4" data-testid={`text-no-meetings-${testIdPrefix}`}>
-          No meetings found from the last 30 days. Sync Fireflies to pull in your recordings.
-        </p>
-      ) : (
-        <>
-          <div className="flex items-center justify-between">
-            <button
-              onClick={onSelectAll}
-              className="text-sm text-primary hover:underline"
-              data-testid={`button-select-all-${testIdPrefix}`}
-            >
-              {selectedIds.length === firefliesMeetings.length ? "Deselect all" : "Select all"}
-            </button>
-            <span className="text-sm text-muted-foreground">
-              {selectedIds.length} of {firefliesMeetings.length} selected
-            </span>
-          </div>
-          <div className="border rounded-md divide-y max-h-[250px] overflow-y-auto">
-            {firefliesMeetings.map(meeting => (
-              <label
-                key={meeting.id}
-                className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors"
-                data-testid={`${testIdPrefix}-meeting-item-${meeting.id}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onToggle(meeting.id);
-                }}
-              >
-                <Checkbox
-                  checked={selectedIds.includes(meeting.id)}
-                  tabIndex={-1}
-                  data-testid={`${testIdPrefix}-checkbox-meeting-${meeting.id}`}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{meeting.title || "Untitled Meeting"}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {meeting.meetingDate && (
-                      <span>{format(new Date(meeting.meetingDate + "T00:00:00"), "MMM d, yyyy")}</span>
-                    )}
-                    {meeting.duration && (
-                      <>
-                        <span>·</span>
-                        <span>{formatDuration(meeting.duration)}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {meeting.participants && (
-                  <span className="text-xs text-muted-foreground hidden sm:block max-w-[200px] truncate">
-                    {meeting.participants}
-                  </span>
-                )}
-              </label>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
+  const toggleWeekly = useCallback((id: number) => {
+    setWeeklyMeetingIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  }, []);
+  const toggleBiweekly = useCallback((id: number) => {
+    setBiweeklyMeetingIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  }, []);
+  const selectAllWeekly = useCallback(() => {
+    setWeeklyMeetingIds(prev => prev.length === firefliesMeetings.length ? [] : firefliesMeetings.map(m => m.id));
+  }, [firefliesMeetings]);
+  const selectAllBiweekly = useCallback(() => {
+    setBiweeklyMeetingIds(prev => prev.length === firefliesMeetings.length ? [] : firefliesMeetings.map(m => m.id));
+  }, [firefliesMeetings]);
 
   return (
     <Layout>
@@ -211,10 +225,11 @@ export function Reports() {
             </CardHeader>
             <CardContent>
               <MeetingSelector
+                meetings={firefliesMeetings}
+                loading={meetingsLoading}
                 selectedIds={weeklyMeetingIds}
-                onToggle={(id) => setWeeklyMeetingIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])}
-                onSelectAll={() => setWeeklyMeetingIds(prev => prev.length === firefliesMeetings.length ? [] : firefliesMeetings.map(m => m.id))}
-                label="Weekly"
+                onToggle={toggleWeekly}
+                onSelectAll={selectAllWeekly}
                 testIdPrefix="weekly"
               />
               <Button
@@ -239,10 +254,11 @@ export function Reports() {
             </CardHeader>
             <CardContent>
               <MeetingSelector
+                meetings={firefliesMeetings}
+                loading={meetingsLoading}
                 selectedIds={biweeklyMeetingIds}
-                onToggle={(id) => setBiweeklyMeetingIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])}
-                onSelectAll={() => setBiweeklyMeetingIds(prev => prev.length === firefliesMeetings.length ? [] : firefliesMeetings.map(m => m.id))}
-                label="Biweekly"
+                onToggle={toggleBiweekly}
+                onSelectAll={selectAllBiweekly}
                 testIdPrefix="biweekly"
               />
               <Button

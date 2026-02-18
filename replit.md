@@ -11,10 +11,10 @@ Private single-user web application for Abe (CEO) that connects to HubSpot and F
 - **Scheduler**: node-cron for hourly syncs, weekly emails (Mon 8AM), biweekly scorecards (every other Tue 8AM)
 
 ## Key Design Decisions
-- **Deal-centric**: Deals are the spine; activities, meetings, commitments all link to deals
+- **Deal-centric**: Deals are the spine; activities, meetings all link to deals
 - **Deterministic metrics**: KPIs computed in code (not by AI). AI only narrates and cites underlying records
 - **Single user**: No authentication needed, only Abe uses the app
-- **Commitment Ledger**: Fireflies action items compared against HubSpot KPIs in reports
+- **Owner name resolution**: HubSpot sync resolves owner IDs to configured rep names from sales_reps table (e.g., owner_id 84998473 → "Dovi") instead of raw HubSpot names
 - **Email delivery**: Mocked with "send" button (no actual email sending)
 
 ## Project Structure
@@ -53,6 +53,9 @@ client/src/
 - FIREFLIES_API_KEY - Fireflies API key
 
 ## Recent Changes
+- 2026-02-18: HubSpot sync now resolves owner IDs to configured rep names (e.g., "Dov rovt" → "Dovi"), fixing missing data for reps whose HubSpot names didn't match their configured names
+- 2026-02-18: Weekly report AI prompt updated for more detailed output — increased transcript context (6000 chars), token limit (4096), and system prompt emphasizes thoroughness
+- 2026-02-18: MeetingSelector refactored with React.memo and stable useCallback props to prevent scroll jumps on checkbox toggle
 - 2026-02-18: Dynamic rep management — sales_reps table replaces hardcoded Deb/Dovi; add/remove reps in Settings, map each to HubSpot user, toggle exclude from data/reports
 - 2026-02-18: Meeting selection for BOTH report types — Reports page shows side-by-side weekly recap and biweekly scorecard cards, each with independent meeting selection checkboxes
 - 2026-02-18: HubSpot sync and metrics now driven by configured reps — no hardcoded names; cleanup function uses dynamic rep list

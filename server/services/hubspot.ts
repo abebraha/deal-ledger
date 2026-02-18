@@ -1,11 +1,17 @@
 import { storage } from "../storage";
 import { log } from "../index";
 
-async function getActiveRepConfig(): Promise<{ hubspotOwnerIds: string[]; repNames: string[] }> {
+async function getActiveRepConfig(): Promise<{ hubspotOwnerIds: string[]; repNames: string[]; ownerIdToRepName: Record<string, string> }> {
   const reps = await storage.getActiveSalesReps();
   const hubspotOwnerIds = reps.filter(r => r.hubspotOwnerId).map(r => r.hubspotOwnerId!);
   const repNames = reps.map(r => r.name.toLowerCase());
-  return { hubspotOwnerIds, repNames };
+  const ownerIdToRepName: Record<string, string> = {};
+  for (const rep of reps) {
+    if (rep.hubspotOwnerId) {
+      ownerIdToRepName[rep.hubspotOwnerId] = rep.name;
+    }
+  }
+  return { hubspotOwnerIds, repNames, ownerIdToRepName };
 }
 
 function isRepOwnerByName(ownerName: string | null | undefined, repNames: string[]): boolean {
@@ -45,7 +51,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync owners: ${e}`, "hubspot");
     }
 
-    const { hubspotOwnerIds: mappedOwnerIds, repNames } = await getActiveRepConfig();
+    const { hubspotOwnerIds: mappedOwnerIds, repNames, ownerIdToRepName } = await getActiveRepConfig();
 
     // Fetch pipeline stage labels so we can map stage IDs to readable names
     const stageMap: Record<string, string> = {};
@@ -85,10 +91,13 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         const ownerName = ownerId ? ownerMap[ownerId] : null;
 
         if (mappedOwnerIds.length > 0) {
-          if (!ownerId || !mappedOwnerIds.includes(ownerId)) continue;
+          if (!ownerId || !mappedOwnerIds.includes(ownerId)) {
+            continue;
+          }
         } else if (!isRepOwnerByName(ownerName, repNames)) {
           continue;
         }
+        const resolvedOwner = (ownerId && ownerIdToRepName[ownerId]) ? ownerIdToRepName[ownerId] : ownerName;
 
         const rawStage = deal.properties.dealstage || "unknown";
         const stageLabel = stageMap[rawStage] || rawStage;
@@ -98,7 +107,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
           name: deal.properties.dealname || "Untitled Deal",
           amount: parseFloat(deal.properties.amount) || 0,
           stage: stageLabel,
-          owner: ownerName || null,
+          owner: resolvedOwner || null,
           closeDate: deal.properties.closedate || null,
           lastActivityDate: deal.properties.hs_lastmodifieddate || null,
           pipeline: deal.properties.pipeline || null,
@@ -129,6 +138,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
             for (const eng of engData.results || []) {
               const engOwnerId = eng.properties.hubspot_owner_id || null;
               const ownerName = engOwnerId ? ownerMap[engOwnerId] : null;
+              const resolvedEngOwner = (engOwnerId && ownerIdToRepName[engOwnerId]) ? ownerIdToRepName[engOwnerId] : ownerName;
 
               const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
               const body = eng.properties.hs_note_body || "";
@@ -137,7 +147,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
                 type: engType.toUpperCase().replace(/S$/, ""),
                 subject: subject,
                 body: body,
-                owner: ownerName || null,
+                owner: resolvedEngOwner || null,
                 activityDate: eng.properties.hs_timestamp || eng.createdAt,
                 hubspotUrl: `https://app.hubspot.com/contacts/activity/${eng.id}`,
               });
@@ -171,6 +181,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
           for (const mtg of meetingsData.results || []) {
             const mtgOwnerId = mtg.properties.hubspot_owner_id || null;
             const ownerName = mtgOwnerId ? ownerMap[mtgOwnerId] : null;
+            const resolvedMtgOwner = (mtgOwnerId && ownerIdToRepName[mtgOwnerId]) ? ownerIdToRepName[mtgOwnerId] : ownerName;
 
             await storage.upsertMeeting({
               hubspotId: mtg.id,
@@ -178,7 +189,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
               startTime: mtg.properties.hs_meeting_start_time || null,
               endTime: mtg.properties.hs_meeting_end_time || null,
               outcome: mtg.properties.hs_meeting_outcome || null,
-              owner: ownerName || null,
+              owner: resolvedMtgOwner || null,
               hubspotUrl: `https://app.hubspot.com/contacts/meetings/${mtg.id}`,
             });
             recordsProcessed++;
