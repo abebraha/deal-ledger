@@ -142,9 +142,13 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
 
               const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
               const body = eng.properties.hs_note_body || "";
+              let activityType = engType.toUpperCase().replace(/S$/, "");
+              if (activityType === "NOTE" && (body.toLowerCase().includes("linkedin") || subject.toLowerCase().includes("linkedin"))) {
+                activityType = "LINKEDIN_MESSAGE";
+              }
               await storage.upsertActivity({
                 hubspotId: eng.id,
-                type: engType.toUpperCase().replace(/S$/, ""),
+                type: activityType,
                 subject: subject,
                 body: body,
                 owner: resolvedEngOwner || null,
