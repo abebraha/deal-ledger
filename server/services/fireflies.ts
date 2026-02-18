@@ -31,7 +31,6 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
             text
             speaker_name
           }
-          action_items
           summary {
             action_items
             keywords
@@ -60,7 +59,12 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
     const transcripts = data.data?.transcripts || [];
 
     for (const transcript of transcripts) {
-      const meetingDate = transcript.date ? new Date(transcript.date * 1000).toISOString().split("T")[0] : null;
+      let meetingDate: string | null = null;
+      if (transcript.date) {
+        const ts = Number(transcript.date);
+        const dateObj = ts > 1e12 ? new Date(ts) : new Date(ts * 1000);
+        meetingDate = dateObj.toISOString().split("T")[0];
+      }
       const participants = Array.isArray(transcript.participants)
         ? transcript.participants.join(", ")
         : transcript.participants || "";
@@ -80,7 +84,7 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
         firefliesId: transcript.id,
         title: transcript.title || "Untitled Meeting",
         meetingDate,
-        duration: transcript.duration || null,
+        duration: transcript.duration ? Math.round(transcript.duration) : null,
         participants,
         summary: summaryText,
         outline: typeof outline === "string" ? outline : JSON.stringify(outline),
@@ -89,7 +93,7 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
       });
       recordsProcessed++;
 
-      const actionItems = transcript.action_items || transcript.summary?.action_items || [];
+      const actionItems = transcript.summary?.action_items || [];
       const actionItemsList = Array.isArray(actionItems) 
         ? actionItems.map((item: any) => typeof item === "string" ? item : item.text || JSON.stringify(item))
         : [];
