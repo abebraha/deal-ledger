@@ -93,7 +93,11 @@ Why it matters — one line.
 What happened. One or two lines max.
 What it means or what's next.
 
-End each rep section with a brief "Outreach" or "Other" note if relevant (e.g., LinkedIn activity, CRM updates, tools built).
+End each rep section with an **"Outreach This Week"** summary that includes:
+- Number of calls made and key contacts reached
+- Number of emails sent and notable recipients/topics
+- Number of LinkedIn messages sent and who they targeted
+- Total outreach actions and how it compares to their weekly goal
 
 STYLE RULES:
 - Be detailed but scannable. Include specifics — names, amounts, next steps, context.
@@ -172,7 +176,8 @@ Rate as Green/Yellow/Red based on the data, with brief justification
 (Repeat this section for EACH rep: ${metrics.repNames.join(", ")})
 For each rep include:
 - Pipeline Summary: open deals count, total value, weighted value
-- Activity Dashboard: calls, emails, meetings, tasks
+- Activity Dashboard: calls, emails, LinkedIn messages, meetings, tasks
+- Outreach Summary: total outreach actions (calls + emails + LinkedIn messages) vs weekly goal
 - Top Deals: top 3-5 deals by amount with stage and close date
 - Performance Rating: Green/Yellow/Red with brief commentary
 

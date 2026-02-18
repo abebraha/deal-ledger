@@ -76,7 +76,7 @@ export function Dashboard() {
             value={kpis?.activity?.totalOutbound ?? 0} 
             trend={kpis?.activity?.outboundGoal ? `Goal: ${kpis.activity.outboundGoal}` : undefined}
             trendUp={kpis?.activity ? kpis.activity.totalOutbound >= kpis.activity.outboundGoal : undefined}
-            subtitle={`${kpis?.activity?.calls ?? 0} calls · ${kpis?.activity?.emails ?? 0} emails`}
+            subtitle={`${kpis?.activity?.calls ?? 0} calls · ${kpis?.activity?.emails ?? 0} emails · ${kpis?.activity?.linkedinMessages ?? 0} LinkedIn`}
             icon={BarChart3} 
           />
         </div>

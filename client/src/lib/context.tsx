@@ -22,7 +22,7 @@ export interface Deal {
 export interface KPIs {
   revenue: { total: number; goal: number; attainment: number };
   pipeline: { total: number; weighted: number; dealCount: number };
-  activity: { calls: number; emails: number; meetingsHeld: number; meetingsGoal: number; outboundGoal: number; totalOutbound: number };
+  activity: { calls: number; emails: number; linkedinMessages: number; meetingsHeld: number; meetingsGoal: number; outboundGoal: number; totalOutbound: number };
   deals: { total: number; closedWon: number; open: number };
 }
 

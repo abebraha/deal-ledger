@@ -167,6 +167,51 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync activities: ${e}`, "hubspot");
     }
 
+    // Sync Communications (LinkedIn messages, SMS, WhatsApp) - paginate through all
+    try {
+      let commHasMore = true;
+      let commAfter: string | undefined;
+      while (commHasMore) {
+        const commUrl = `https://api.hubapi.com/crm/v3/objects/communications?limit=100&properties=hs_communication_channel_type,hs_communication_body,hs_timestamp,hubspot_owner_id${commAfter ? `&after=${commAfter}` : ""}`;
+        const commResponse = await fetch(commUrl, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (commResponse.ok) {
+          const commData = await commResponse.json();
+          for (const comm of commData.results || []) {
+            const channelType = (comm.properties.hs_communication_channel_type || "").toUpperCase();
+            if (channelType !== "LINKEDIN") continue;
+
+            const commOwnerId = comm.properties.hubspot_owner_id || null;
+            if (mappedOwnerIds.length > 0 && (!commOwnerId || !mappedOwnerIds.includes(commOwnerId))) continue;
+            const ownerName = commOwnerId ? ownerMap[commOwnerId] : null;
+            const resolvedCommOwner = (commOwnerId && ownerIdToRepName[commOwnerId]) ? ownerIdToRepName[commOwnerId] : ownerName;
+            if (!resolvedCommOwner) continue;
+
+            await storage.upsertActivity({
+              hubspotId: `comm_${comm.id}`,
+              type: "LINKEDIN_MESSAGE",
+              subject: "LinkedIn Message",
+              body: comm.properties.hs_communication_body || "",
+              owner: resolvedCommOwner || null,
+              activityDate: comm.properties.hs_timestamp || comm.createdAt,
+              hubspotUrl: `https://app.hubspot.com/contacts/communications/${comm.id}`,
+            });
+            recordsProcessed++;
+          }
+          if (commData.paging?.next?.after) {
+            commAfter = commData.paging.next.after;
+          } else {
+            commHasMore = false;
+          }
+        } else {
+          commHasMore = false;
+        }
+      }
+    } catch (e) {
+      log(`Warning: Could not sync communications: ${e}`, "hubspot");
+    }
+
     // Sync Meetings - paginate through all
     try {
       let mtgHasMore = true;

@@ -323,6 +323,7 @@ class DatabaseStorage implements IStorage {
 
     const calls = thisWeekActivities.filter(a => a.type === "CALL" || a.type === "call");
     const emails = thisWeekActivities.filter(a => a.type === "EMAIL" || a.type === "email");
+    const linkedinMessages = thisWeekActivities.filter(a => a.type === "LINKEDIN_MESSAGE" || a.type === "linkedin_message");
     const meetingsHeld = thisWeekMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
 
     const monthlyRevenueGoal = parseInt(allSettings.hubspotRevenueGoal || allSettings.monthlyRevenueGoal || "100000");
@@ -343,10 +344,11 @@ class DatabaseStorage implements IStorage {
       activity: {
         calls: calls.length,
         emails: emails.length,
+        linkedinMessages: linkedinMessages.length,
         meetingsHeld: meetingsHeld.length,
         meetingsGoal: weeklyMeetingsGoal,
         outboundGoal: weeklyOutboundGoal,
-        totalOutbound: calls.length + emails.length,
+        totalOutbound: calls.length + emails.length + linkedinMessages.length,
       },
       deals: {
         total: allDeals.length,
