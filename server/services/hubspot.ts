@@ -142,10 +142,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
 
               const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
               const body = eng.properties.hs_note_body || "";
-              let activityType = engType.toUpperCase().replace(/S$/, "");
-              if (activityType === "NOTE" && (body.toLowerCase().includes("linkedin") || subject.toLowerCase().includes("linkedin"))) {
-                activityType = "LINKEDIN_MESSAGE";
-              }
+              const activityType = engType.toUpperCase().replace(/S$/, "");
               await storage.upsertActivity({
                 hubspotId: eng.id,
                 type: activityType,
@@ -184,13 +181,12 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
           const commData = await commResponse.json();
           for (const comm of commData.results || []) {
             const channelType = (comm.properties.hs_communication_channel_type || "").toUpperCase();
-            if (channelType !== "LINKEDIN") continue;
+            if (channelType !== "LINKEDIN_MESSAGE") continue;
 
             const commOwnerId = comm.properties.hubspot_owner_id || null;
             if (mappedOwnerIds.length > 0 && (!commOwnerId || !mappedOwnerIds.includes(commOwnerId))) continue;
             const ownerName = commOwnerId ? ownerMap[commOwnerId] : null;
             const resolvedCommOwner = (commOwnerId && ownerIdToRepName[commOwnerId]) ? ownerIdToRepName[commOwnerId] : ownerName;
-            if (!resolvedCommOwner) continue;
 
             await storage.upsertActivity({
               hubspotId: `comm_${comm.id}`,
