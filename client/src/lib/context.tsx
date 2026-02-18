@@ -52,6 +52,8 @@ export interface ConnectionsData {
 }
 
 interface AppContextType {
+  accountId: number;
+  accountName: string;
   deals: Deal[];
   activities: Activity[];
   settings: Record<string, string>;
@@ -72,27 +74,33 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({ accountId, accountName, children }: { accountId: number; accountName: string; children: ReactNode }) {
   const qc = useQueryClient();
+  const base = `/api/accounts/${accountId}`;
 
   const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
-    queryKey: ["/api/deals"],
+    queryKey: [base, "deals"],
+    queryFn: async () => { const r = await fetch(`${base}/deals`); return r.json(); },
   });
 
   const { data: activities = [], isLoading: activitiesLoading } = useQuery<Activity[]>({
-    queryKey: ["/api/activities"],
+    queryKey: [base, "activities"],
+    queryFn: async () => { const r = await fetch(`${base}/activities`); return r.json(); },
   });
 
   const { data: kpis = null, isLoading: kpisLoading } = useQuery<KPIs>({
-    queryKey: ["/api/kpis"],
+    queryKey: [base, "kpis"],
+    queryFn: async () => { const r = await fetch(`${base}/kpis`); return r.json(); },
   });
 
   const { data: settings = {}, isLoading: settingsLoading } = useQuery<Record<string, string>>({
-    queryKey: ["/api/settings"],
+    queryKey: [base, "settings"],
+    queryFn: async () => { const r = await fetch(`${base}/settings`); return r.json(); },
   });
 
   const { data: connections = null, isLoading: connectionsLoading } = useQuery<ConnectionsData>({
-    queryKey: ["/api/connections"],
+    queryKey: [base, "connections"],
+    queryFn: async () => { const r = await fetch(`${base}/connections`); return r.json(); },
   });
 
   const isConnected = !!(connections?.hubspot?.connected && connections?.fireflies?.connected);
@@ -100,17 +108,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: Record<string, string>) => {
-      await apiRequest("POST", "/api/settings", data);
+      await apiRequest("POST", `${base}/settings`, data);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/settings"] });
-      qc.invalidateQueries({ queryKey: ["/api/kpis"] });
+      qc.invalidateQueries({ queryKey: [base, "settings"] });
+      qc.invalidateQueries({ queryKey: [base, "kpis"] });
     },
   });
 
   const connectServiceMutation = useMutation({
     mutationFn: async ({ service, apiKey }: { service: "hubspot" | "fireflies"; apiKey: string }) => {
-      const res = await fetch(`/api/connections/${service}/connect`, {
+      const res = await fetch(`${base}/connections/${service}/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey }),
@@ -122,55 +130,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/connections"] });
-      qc.invalidateQueries({ queryKey: ["/api/deals"] });
-      qc.invalidateQueries({ queryKey: ["/api/kpis"] });
+      qc.invalidateQueries({ queryKey: [base, "connections"] });
+      qc.invalidateQueries({ queryKey: [base, "deals"] });
+      qc.invalidateQueries({ queryKey: [base, "kpis"] });
     },
   });
 
   const disconnectServiceMutation = useMutation({
     mutationFn: async (service: "hubspot" | "fireflies") => {
-      await apiRequest("POST", `/api/connections/${service}/disconnect`);
+      await apiRequest("POST", `${base}/connections/${service}/disconnect`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/connections"] });
+      qc.invalidateQueries({ queryKey: [base, "connections"] });
     },
   });
 
   const syncHubspotMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/sync/hubspot");
+      await apiRequest("POST", `${base}/sync/hubspot`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/deals"] });
-      qc.invalidateQueries({ queryKey: ["/api/activities"] });
-      qc.invalidateQueries({ queryKey: ["/api/kpis"] });
-      qc.invalidateQueries({ queryKey: ["/api/connections"] });
+      qc.invalidateQueries({ queryKey: [base, "deals"] });
+      qc.invalidateQueries({ queryKey: [base, "activities"] });
+      qc.invalidateQueries({ queryKey: [base, "kpis"] });
+      qc.invalidateQueries({ queryKey: [base, "connections"] });
     },
   });
 
   const syncFirefliesMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/sync/fireflies");
+      await apiRequest("POST", `${base}/sync/fireflies`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/kpis"] });
-      qc.invalidateQueries({ queryKey: ["/api/connections"] });
+      qc.invalidateQueries({ queryKey: [base, "kpis"] });
+      qc.invalidateQueries({ queryKey: [base, "connections"] });
     },
   });
 
   const refetchAll = () => {
-    qc.invalidateQueries({ queryKey: ["/api/deals"] });
-    qc.invalidateQueries({ queryKey: ["/api/activities"] });
-    qc.invalidateQueries({ queryKey: ["/api/kpis"] });
-    qc.invalidateQueries({ queryKey: ["/api/settings"] });
-    qc.invalidateQueries({ queryKey: ["/api/connections"] });
+    qc.invalidateQueries({ queryKey: [base] });
   };
 
   const isSyncing = syncHubspotMutation.isPending || syncFirefliesMutation.isPending;
 
   return (
     <AppContext.Provider value={{
+      accountId,
+      accountName,
       deals,
       activities,
       settings,

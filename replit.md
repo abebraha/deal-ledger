@@ -1,72 +1,88 @@
 # DealFlow - CEO Sales Intelligence App
 
 ## Overview
-Private single-user web application for Abe (CEO) that connects to HubSpot and Fireflies, stores synced data locally in Postgres, computes deterministic sales metrics, and uses AI to generate weekly email updates and biweekly CEO scorecard reports.
+Multi-tenant web application for Abe (CEO consultant) that manages multiple client company accounts. Each account has isolated HubSpot/Fireflies connections, sales reps, deals, activities, meetings, and reports. The app syncs data from HubSpot and Fireflies, computes deterministic sales metrics, and uses AI to generate weekly meeting recaps and biweekly CEO scorecard reports formatted as downloadable PDFs.
 
 ## Architecture
-- **Frontend**: React + Vite + TypeScript, using shadcn/ui components, wouter routing, @tanstack/react-query
+- **Frontend**: React + Vite + TypeScript, using shadcn/ui components, wouter v3 routing (nested), @tanstack/react-query
 - **Backend**: Express.js API, Drizzle ORM with PostgreSQL
 - **AI**: OpenAI via Replit AI Integrations (env vars: AI_INTEGRATIONS_OPENAI_API_KEY, AI_INTEGRATIONS_OPENAI_BASE_URL)
 - **Sync**: HubSpot REST API, Fireflies GraphQL API
 - **Scheduler**: node-cron for hourly syncs, weekly emails (Mon 8AM), biweekly scorecards (every other Tue 8AM)
+- **Multi-tenancy**: Account-based isolation via `account_id` foreign keys with CASCADE delete on all data tables
 
 ## Key Design Decisions
+- **Multi-tenant**: Accounts table with account_id FK on all data tables; each account has its own connections, reps, deals, etc.
 - **Deal-centric**: Deals are the spine; activities, meetings all link to deals
 - **Deterministic metrics**: KPIs computed in code (not by AI). AI only narrates and cites underlying records
 - **Single user**: No authentication needed, only Abe uses the app
-- **Owner name resolution**: HubSpot sync resolves owner IDs to configured rep names from sales_reps table (e.g., owner_id 84998473 → "Dovi") instead of raw HubSpot names
+- **Owner name resolution**: HubSpot sync resolves owner IDs to configured rep names from sales_reps table
 - **Email delivery**: Mocked with "send" button (no actual email sending)
+- **API key storage**: Per-account connection configs stored in connections table (not global secrets)
 
 ## Project Structure
 ```
-shared/schema.ts          - Drizzle schema (deals, activities, meetings, commitments, settings, reports, sync_logs, connections, conversations, messages)
+shared/schema.ts          - Drizzle schema (accounts, deals, activities, meetings, settings, reports, sync_logs, connections, sales_reps, fireflies_meetings, conversations, messages)
 server/db.ts              - Database connection
-server/storage.ts         - Storage layer with CRUD + deterministic KPI computation
-server/routes.ts          - All API endpoints
+server/storage.ts         - Storage layer with CRUD + deterministic KPI computation (all methods accept accountId)
+server/routes.ts          - All API endpoints under /api/accounts/:accountId/...
 server/services/
-  hubspot.ts              - HubSpot sync service
-  fireflies.ts            - Fireflies sync service  
-  metrics.ts              - Metrics computation for reports (per-rep breakdown)
-  ai-reports.ts           - AI report generation (weekly, biweekly, custom, streaming)
+  hubspot.ts              - HubSpot sync service (account-scoped)
+  fireflies.ts            - Fireflies sync service (account-scoped)
+  metrics.ts              - Metrics computation for reports (per-rep breakdown, account-scoped)
+  ai-reports.ts           - AI report generation (weekly, biweekly, streaming, account-scoped)
   pdf-report.ts           - PDF generation from report content using pdfkit
-  scheduler.ts            - Background cron jobs
+  scheduler.ts            - Background cron jobs (iterates all accounts)
 client/src/
-  lib/context.tsx          - React context with real API calls via react-query
+  lib/context.tsx          - React context with account-scoped API calls via react-query
+  pages/AccountsPage.tsx   - Landing page: list/create/delete client accounts
+  pages/AccountApp.tsx     - Account wrapper: loads account, provides AppProvider context
   pages/                   - Dashboard, Connections, Settings, Reports, ChatPage, DealsPage
-  components/dashboard/    - KPICard, DealTable, CommitmentList
-  components/layout/       - Layout, Sidebar
+  components/dashboard/    - KPICard, DealTable
+  components/layout/       - Layout, Sidebar (with account name + back to clients link)
 ```
 
 ## API Endpoints
-- GET /api/kpis - Dashboard KPIs
-- GET/api/deals, GET /api/deals/:id - Deals
-- GET /api/activities, GET /api/meetings - Activities/Meetings
-- GET/POST /api/settings - Goals/targets
-- GET/POST /api/sales-reps, PATCH/DELETE /api/sales-reps/:id - Dynamic rep management
-- GET /api/connections, POST /api/connections/:service/connect|disconnect
-- POST /api/sync/hubspot, POST /api/sync/fireflies, GET /api/sync/logs
-- GET /api/reports, GET /api/reports/:id, GET /api/reports/:id/pdf, POST /api/reports/generate/weekly|biweekly, POST /api/reports/:id/send
-- POST /api/chat - Streaming AI chat (SSE)
+### Account Management
+- GET /api/accounts - List all accounts
+- POST /api/accounts - Create account
+- GET /api/accounts/:accountId - Get account
+- DELETE /api/accounts/:accountId - Delete account + all data (CASCADE)
 
-## Required Secrets
-- HUBSPOT_API_KEY - HubSpot Private App token
-- FIREFLIES_API_KEY - Fireflies API key
+### Account-Scoped (all under /api/accounts/:accountId/)
+- GET /kpis - Dashboard KPIs
+- GET /deals, GET /deals/:id - Deals
+- GET /activities, GET /meetings - Activities/Meetings
+- GET/POST /settings - Goals/targets
+- GET/POST /sales-reps, PATCH/DELETE /sales-reps/:id - Dynamic rep management
+- GET /hubspot/owners - HubSpot owner list for rep mapping
+- GET /connections, POST /connections/:service/connect|disconnect
+- POST /sync/hubspot, POST /sync/fireflies, GET /sync/logs
+- GET /reports, GET /reports/:id, GET /reports/:id/pdf, POST /reports/generate/weekly|biweekly, POST /reports/:id/send
+- GET /fireflies-meetings - Fireflies meetings for report selection
+- POST /chat - Streaming AI chat (SSE)
+
+## Frontend Routing
+- `/` - AccountsPage (list/manage client accounts)
+- `/accounts/:accountId` - Dashboard (nested via wouter v3 nest)
+- `/accounts/:accountId/deals` - Deal pipeline
+- `/accounts/:accountId/reports` - Report generation & history
+- `/accounts/:accountId/chat` - AI analyst chat
+- `/accounts/:accountId/connections` - Data source connections
+- `/accounts/:accountId/settings` - Sales reps, goals
 
 ## Recent Changes
-- 2026-02-18: Fixed LinkedIn message sync — Communications API channel type filter corrected from "LINKEDIN" to "LINKEDIN_MESSAGE"; removed incorrect note-body heuristic; all 66 LinkedIn messages now properly synced from Deb
-- 2026-02-18: LinkedIn message syncing from HubSpot Communications API; outbound KPI now includes calls + emails + LinkedIn messages; report prompts emphasize outreach actions breakdown per rep
-- 2026-02-18: Report metrics now filtered by period (7 days for weekly, 14 days for biweekly) instead of counting all historical activity
-- 2026-02-18: HubSpot sync now resolves owner IDs to configured rep names (e.g., "Dov rovt" → "Dovi"), fixing missing data for reps whose HubSpot names didn't match their configured names
-- 2026-02-18: Weekly report AI prompt updated for more detailed output — increased transcript context (6000 chars), token limit (4096), and system prompt emphasizes thoroughness
-- 2026-02-18: MeetingSelector refactored with React.memo and stable useCallback props to prevent scroll jumps on checkbox toggle
-- 2026-02-18: Dynamic rep management — sales_reps table replaces hardcoded Deb/Dovi; add/remove reps in Settings, map each to HubSpot user, toggle exclude from data/reports
-- 2026-02-18: Meeting selection for BOTH report types — Reports page shows side-by-side weekly recap and biweekly scorecard cards, each with independent meeting selection checkboxes
-- 2026-02-18: HubSpot sync and metrics now driven by configured reps — no hardcoded names; cleanup function uses dynamic rep list
-- 2026-02-18: Weekly report redesigned as "Meeting Recap" — focused on selected Fireflies meetings (what was discussed, rep updates, action items) rather than duplicating HubSpot pipeline data; biweekly scorecard remains the full pipeline/metrics report
-- 2026-02-18: Commitment ledger feature fully removed from schema references, storage, routes, metrics, AI reports, and all frontend pages
-- 2026-02-18: Fireflies meetings now stored with full summaries, outlines, keywords, transcript snippets; AI reports include "Notable Activities & Context" section highlighting demos, presentations, internal projects per rep
-- 2026-02-18: Revenue goal now synced from HubSpot goal_targets API (Settings page shows read-only); meetings/outbound goals remain manual in Settings
-- 2026-02-18: HubSpot sync filters all data to Deb & Dovi only; non-rep deals/activities/meetings are excluded at sync time and cleaned up automatically
-- 2026-02-18: PDF report generation (pdfkit), per-rep metrics breakdown (Deb/Dovi), improved AI prompts with rep separation, markdown rendering on Reports page
-- 2026-02-18: Connection flow with API key validation, sync timestamp tracking, config preservation during syncs
-- 2026-02-17: Initial full build - schema, storage, services, API routes, frontend connected to real APIs
+- 2026-02-18: Multi-tenancy — accounts table, account_id on all data tables, API routes restructured to /api/accounts/:accountId/..., frontend AccountsPage + nested routing, scheduler iterates all accounts
+- 2026-02-18: Fixed LinkedIn message sync — Communications API channel type filter corrected from "LINKEDIN" to "LINKEDIN_MESSAGE"
+- 2026-02-18: LinkedIn message syncing from HubSpot Communications API; outbound KPI now includes calls + emails + LinkedIn messages
+- 2026-02-18: Report metrics now filtered by period (7 days for weekly, 14 days for biweekly)
+- 2026-02-18: HubSpot sync now resolves owner IDs to configured rep names
+- 2026-02-18: Dynamic rep management — sales_reps table; add/remove reps in Settings, map each to HubSpot user
+- 2026-02-18: Meeting selection for BOTH report types
+- 2026-02-18: HubSpot sync and metrics now driven by configured reps — no hardcoded names
+- 2026-02-18: Weekly report redesigned as "Meeting Recap"; biweekly scorecard remains full pipeline/metrics report
+- 2026-02-18: Fireflies meetings stored with full summaries, outlines, keywords, transcript snippets
+- 2026-02-18: Revenue goal synced from HubSpot goal_targets API
+- 2026-02-18: PDF report generation (pdfkit), per-rep metrics breakdown
+- 2026-02-18: Connection flow with API key validation, sync timestamp tracking
+- 2026-02-17: Initial full build

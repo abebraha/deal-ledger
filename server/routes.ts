@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { syncHubSpot } from "./services/hubspot";
@@ -8,15 +8,61 @@ import { generateReportPDF } from "./services/pdf-report";
 import { startScheduler } from "./services/scheduler";
 import { z } from "zod";
 
+function getAccountId(req: Request): number {
+  return parseInt(req.params.accountId as string);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  // ─── Dashboard KPIs ───
-  app.get("/api/kpis", async (_req, res) => {
+  // ─── Accounts ───
+  app.get("/api/accounts", async (_req, res) => {
     try {
-      const kpis = await storage.computeKPIs();
+      const allAccounts = await storage.getAccounts();
+      res.json(allAccounts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounts", async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== "string" || name.trim().length === 0) {
+        return res.status(400).json({ error: "Account name is required" });
+      }
+      const account = await storage.createAccount({ name: name.trim() });
+      res.json(account);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/accounts/:accountId", async (req, res) => {
+    try {
+      const account = await storage.getAccount(getAccountId(req));
+      if (!account) return res.status(404).json({ error: "Account not found" });
+      res.json(account);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/accounts/:accountId", async (req, res) => {
+    try {
+      await storage.deleteAccount(getAccountId(req));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Dashboard KPIs ───
+  app.get("/api/accounts/:accountId/kpis", async (req, res) => {
+    try {
+      const kpis = await storage.computeKPIs(getAccountId(req));
       res.json(kpis);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -24,18 +70,18 @@ export async function registerRoutes(
   });
 
   // ─── Deals ───
-  app.get("/api/deals", async (_req, res) => {
+  app.get("/api/accounts/:accountId/deals", async (req, res) => {
     try {
-      const allDeals = await storage.getDeals();
+      const allDeals = await storage.getDeals(getAccountId(req));
       res.json(allDeals);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/deals/:id", async (req, res) => {
+  app.get("/api/accounts/:accountId/deals/:id", async (req, res) => {
     try {
-      const deal = await storage.getDeal(parseInt(req.params.id));
+      const deal = await storage.getDeal(getAccountId(req), parseInt(req.params.id));
       if (!deal) return res.status(404).json({ error: "Deal not found" });
       res.json(deal);
     } catch (err: any) {
@@ -44,11 +90,12 @@ export async function registerRoutes(
   });
 
   // ─── Activities ───
-  app.get("/api/activities", async (req, res) => {
+  app.get("/api/accounts/:accountId/activities", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-      const allActivities = await storage.getActivities(dealId);
+      const allActivities = await storage.getActivities(accountId, dealId);
       res.json(allActivities.slice(0, limit));
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -56,10 +103,11 @@ export async function registerRoutes(
   });
 
   // ─── Meetings ───
-  app.get("/api/meetings", async (req, res) => {
+  app.get("/api/accounts/:accountId/meetings", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
-      const allMeetings = await storage.getMeetings(dealId);
+      const allMeetings = await storage.getMeetings(accountId, dealId);
       res.json(allMeetings);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -67,20 +115,21 @@ export async function registerRoutes(
   });
 
   // ─── Settings ───
-  app.get("/api/settings", async (_req, res) => {
+  app.get("/api/accounts/:accountId/settings", async (req, res) => {
     try {
-      const all = await storage.getAllSettings();
+      const all = await storage.getAllSettings(getAccountId(req));
       res.json(all);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/settings", async (req, res) => {
+  app.post("/api/accounts/:accountId/settings", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const entries = req.body;
       for (const [key, value] of Object.entries(entries)) {
-        await storage.setSetting(key, String(value));
+        await storage.setSetting(accountId, key, String(value));
       }
       res.json({ success: true });
     } catch (err: any) {
@@ -89,10 +138,11 @@ export async function registerRoutes(
   });
 
   // ─── Connections ───
-  app.get("/api/connections", async (_req, res) => {
+  app.get("/api/accounts/:accountId/connections", async (req, res) => {
     try {
-      const hubspot = await storage.getConnection("hubspot");
-      const fireflies = await storage.getConnection("fireflies");
+      const accountId = getAccountId(req);
+      const hubspot = await storage.getConnection(accountId, "hubspot");
+      const fireflies = await storage.getConnection(accountId, "fireflies");
       const sanitize = (conn: any) => conn ? { ...conn, config: undefined } : null;
       res.json({ hubspot: sanitize(hubspot), fireflies: sanitize(fireflies) });
     } catch (err: any) {
@@ -100,8 +150,9 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/connections/:service/connect", async (req, res) => {
+  app.post("/api/accounts/:accountId/connections/:service/connect", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const service = req.params.service;
       if (service !== "hubspot" && service !== "fireflies") {
         return res.status(400).json({ error: "Invalid service" });
@@ -112,13 +163,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "API key is required" });
       }
 
-      // Validate the API key by making a test call
       if (service === "hubspot") {
         const testRes = await fetch("https://api.hubapi.com/crm/v3/objects/deals?limit=1", {
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
         });
         if (!testRes.ok) {
-          const errText = await testRes.text();
           return res.status(400).json({ error: `HubSpot API key validation failed (${testRes.status}). Please check your key.` });
         }
       } else {
@@ -139,18 +188,18 @@ export async function registerRoutes(
         }
       }
 
-      // Store the key in the connection config
-      await storage.upsertConnection(service, true, { apiKey: apiKey.trim() });
+      await storage.upsertConnection(accountId, service, true, { apiKey: apiKey.trim() });
       res.json({ success: true, message: `${service} connected successfully` });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/connections/:service/disconnect", async (req, res) => {
+  app.post("/api/accounts/:accountId/connections/:service/disconnect", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const service = req.params.service;
-      await storage.upsertConnection(service, false, null);
+      await storage.upsertConnection(accountId, service, false, null);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -158,11 +207,12 @@ export async function registerRoutes(
   });
 
   // ─── HubSpot Owners (for rep mapping) ───
-  app.get("/api/hubspot/owners", async (_req, res) => {
+  app.get("/api/accounts/:accountId/hubspot/owners", async (req, res) => {
     try {
-      let apiKey = process.env.HUBSPOT_API_KEY;
+      const accountId = getAccountId(req);
+      let apiKey: string | undefined;
       try {
-        const conn = await storage.getConnection("hubspot");
+        const conn = await storage.getConnection(accountId, "hubspot");
         if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
           apiKey = (conn.config as any).apiKey;
         }
@@ -189,9 +239,9 @@ export async function registerRoutes(
   });
 
   // ─── Sales Reps ───
-  app.get("/api/sales-reps", async (_req, res) => {
+  app.get("/api/accounts/:accountId/sales-reps", async (req, res) => {
     try {
-      const reps = await storage.getSalesReps();
+      const reps = await storage.getSalesReps(getAccountId(req));
       res.json(reps);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -204,13 +254,14 @@ export async function registerRoutes(
     excluded: z.boolean().optional().default(false),
   });
 
-  app.post("/api/sales-reps", async (req, res) => {
+  app.post("/api/accounts/:accountId/sales-reps", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const parsed = createRepSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid data" });
       }
-      const rep = await storage.createSalesRep(parsed.data);
+      const rep = await storage.createSalesRep({ ...parsed.data, accountId });
       res.json(rep);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -223,7 +274,7 @@ export async function registerRoutes(
     excluded: z.boolean().optional(),
   });
 
-  app.patch("/api/sales-reps/:id", async (req, res) => {
+  app.patch("/api/accounts/:accountId/sales-reps/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const parsed = updateRepSchema.safeParse(req.body);
@@ -238,7 +289,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/sales-reps/:id", async (req, res) => {
+  app.delete("/api/accounts/:accountId/sales-reps/:id", async (req, res) => {
     try {
       await storage.deleteSalesRep(parseInt(req.params.id));
       res.json({ success: true });
@@ -248,9 +299,10 @@ export async function registerRoutes(
   });
 
   // ─── Fireflies Meetings list (for report meeting selection) ───
-  app.get("/api/fireflies-meetings", async (req, res) => {
+  app.get("/api/accounts/:accountId/fireflies-meetings", async (req, res) => {
     try {
-      const allMeetings = await storage.getFirefliesMeetings();
+      const accountId = getAccountId(req);
+      const allMeetings = await storage.getFirefliesMeetings(accountId);
       const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
       const recent = allMeetings
         .filter(m => {
@@ -277,27 +329,27 @@ export async function registerRoutes(
   });
 
   // ─── Manual Sync ───
-  app.post("/api/sync/hubspot", async (_req, res) => {
+  app.post("/api/accounts/:accountId/sync/hubspot", async (req, res) => {
     try {
-      const result = await syncHubSpot();
+      const result = await syncHubSpot(getAccountId(req));
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/sync/fireflies", async (_req, res) => {
+  app.post("/api/accounts/:accountId/sync/fireflies", async (req, res) => {
     try {
-      const result = await syncFireflies();
+      const result = await syncFireflies(getAccountId(req));
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/sync/logs", async (_req, res) => {
+  app.get("/api/accounts/:accountId/sync/logs", async (req, res) => {
     try {
-      const logs = await storage.getLatestSyncLogs();
+      const logs = await storage.getLatestSyncLogs(getAccountId(req));
       res.json(logs);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -305,19 +357,19 @@ export async function registerRoutes(
   });
 
   // ─── Reports ───
-  app.get("/api/reports", async (req, res) => {
+  app.get("/api/accounts/:accountId/reports", async (req, res) => {
     try {
       const type = req.query.type as string | undefined;
-      const all = await storage.getReports(type);
+      const all = await storage.getReports(getAccountId(req), type);
       res.json(all);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/reports/:id", async (req, res) => {
+  app.get("/api/accounts/:accountId/reports/:id", async (req, res) => {
     try {
-      const report = await storage.getReport(parseInt(req.params.id));
+      const report = await storage.getReport(getAccountId(req), parseInt(req.params.id));
       if (!report) return res.status(404).json({ error: "Report not found" });
       res.json(report);
     } catch (err: any) {
@@ -325,12 +377,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reports/generate/weekly", async (req, res) => {
+  app.post("/api/accounts/:accountId/reports/generate/weekly", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const { meetingIds } = req.body || {};
-      const content = await generateWeeklyEmail(meetingIds);
-      const kpis = await storage.computeKPIs();
+      const content = await generateWeeklyEmail(accountId, meetingIds);
+      const kpis = await storage.computeKPIs(accountId);
       const report = await storage.createReport({
+        accountId,
         type: "weekly",
         title: `Meeting Recap - ${new Date().toLocaleDateString()}`,
         content,
@@ -344,12 +398,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reports/generate/biweekly", async (req, res) => {
+  app.post("/api/accounts/:accountId/reports/generate/biweekly", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const { meetingIds } = req.body || {};
-      const content = await generateBiweeklyScorecard(meetingIds);
-      const kpis = await storage.computeKPIs();
+      const content = await generateBiweeklyScorecard(accountId, meetingIds);
+      const kpis = await storage.computeKPIs(accountId);
       const report = await storage.createReport({
+        accountId,
         type: "biweekly",
         title: `CEO Scorecard - ${new Date().toLocaleDateString()}`,
         content,
@@ -363,18 +419,18 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reports/:id/send", async (req, res) => {
+  app.post("/api/accounts/:accountId/reports/:id/send", async (req, res) => {
     try {
-      await storage.markReportSent(parseInt(req.params.id));
+      await storage.markReportSent(getAccountId(req), parseInt(req.params.id));
       res.json({ success: true, message: "Report marked as sent (email delivery mocked)" });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/reports/:id/pdf", async (req, res) => {
+  app.get("/api/accounts/:accountId/reports/:id/pdf", async (req, res) => {
     try {
-      const report = await storage.getReport(parseInt(req.params.id));
+      const report = await storage.getReport(getAccountId(req), parseInt(req.params.id));
       if (!report) return res.status(404).json({ error: "Report not found" });
 
       const filename = (report.title.replace(/[^a-zA-Z0-9 ]/g, "") || "Report").trim();
@@ -395,8 +451,9 @@ export async function registerRoutes(
   });
 
   // ─── AI Chat (streaming) ───
-  app.post("/api/chat", async (req, res) => {
+  app.post("/api/accounts/:accountId/chat", async (req, res) => {
     try {
+      const accountId = getAccountId(req);
       const { message } = req.body;
       if (!message) return res.status(400).json({ error: "Message is required" });
 
@@ -404,7 +461,7 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const stream = await streamCustomReport(message);
+      const stream = await streamCustomReport(accountId, message);
       let fullResponse = "";
 
       for await (const chunk of stream) {

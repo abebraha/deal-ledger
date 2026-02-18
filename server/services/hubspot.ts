@@ -1,8 +1,8 @@
 import { storage } from "../storage";
 import { log } from "../index";
 
-async function getActiveRepConfig(): Promise<{ hubspotOwnerIds: string[]; repNames: string[]; ownerIdToRepName: Record<string, string> }> {
-  const reps = await storage.getActiveSalesReps();
+async function getActiveRepConfig(accountId: number): Promise<{ hubspotOwnerIds: string[]; repNames: string[]; ownerIdToRepName: Record<string, string> }> {
+  const reps = await storage.getActiveSalesReps(accountId);
   const hubspotOwnerIds = reps.filter(r => r.hubspotOwnerId).map(r => r.hubspotOwnerId!);
   const repNames = reps.map(r => r.name.toLowerCase());
   const ownerIdToRepName: Record<string, string> = {};
@@ -20,10 +20,10 @@ function isRepOwnerByName(ownerName: string | null | undefined, repNames: string
   return repNames.some(rep => lower.includes(rep));
 }
 
-export async function syncHubSpot(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
-  let apiKey = process.env.HUBSPOT_API_KEY;
+export async function syncHubSpot(accountId: number): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
+  let apiKey: string | undefined;
   try {
-    const conn = await storage.getConnection("hubspot");
+    const conn = await storage.getConnection(accountId, "hubspot");
     if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
       apiKey = (conn.config as any).apiKey;
     }
@@ -35,7 +35,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
   let recordsProcessed = 0;
 
   try {
-    // Build owner map first so we can filter by rep
     const ownerMap: Record<string, string> = {};
     try {
       const ownersResponse = await fetch("https://api.hubapi.com/crm/v3/owners?limit=100", {
@@ -51,9 +50,8 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync owners: ${e}`, "hubspot");
     }
 
-    const { hubspotOwnerIds: mappedOwnerIds, repNames, ownerIdToRepName } = await getActiveRepConfig();
+    const { hubspotOwnerIds: mappedOwnerIds, repNames, ownerIdToRepName } = await getActiveRepConfig(accountId);
 
-    // Fetch pipeline stage labels so we can map stage IDs to readable names
     const stageMap: Record<string, string> = {};
     try {
       const pipelinesResponse = await fetch("https://api.hubapi.com/crm/v3/pipelines/deals", {
@@ -71,7 +69,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not fetch pipeline stages: ${e}`, "hubspot");
     }
 
-    // Sync Deals - paginate through all
     let hasMore = true;
     let after: string | undefined;
     while (hasMore) {
@@ -103,6 +100,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         const stageLabel = stageMap[rawStage] || rawStage;
 
         await storage.upsertDeal({
+          accountId,
           hubspotId: deal.id,
           name: deal.properties.dealname || "Untitled Deal",
           amount: parseFloat(deal.properties.amount) || 0,
@@ -123,7 +121,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       }
     }
 
-    // Sync Engagements (activities) - paginate through all
     try {
       for (const engType of ["calls", "emails", "notes", "tasks"]) {
         let engHasMore = true;
@@ -144,6 +141,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
               const body = eng.properties.hs_note_body || "";
               const activityType = engType.toUpperCase().replace(/S$/, "");
               await storage.upsertActivity({
+                accountId,
                 hubspotId: eng.id,
                 type: activityType,
                 subject: subject,
@@ -168,7 +166,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync activities: ${e}`, "hubspot");
     }
 
-    // Sync Communications (LinkedIn messages, SMS, WhatsApp) - paginate through all
     try {
       let commHasMore = true;
       let commAfter: string | undefined;
@@ -189,6 +186,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
             const resolvedCommOwner = (commOwnerId && ownerIdToRepName[commOwnerId]) ? ownerIdToRepName[commOwnerId] : ownerName;
 
             await storage.upsertActivity({
+              accountId,
               hubspotId: `comm_${comm.id}`,
               type: "LINKEDIN_MESSAGE",
               subject: "LinkedIn Message",
@@ -212,7 +210,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync communications: ${e}`, "hubspot");
     }
 
-    // Sync Meetings - paginate through all
     try {
       let mtgHasMore = true;
       let mtgAfter: string | undefined;
@@ -229,6 +226,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
             const resolvedMtgOwner = (mtgOwnerId && ownerIdToRepName[mtgOwnerId]) ? ownerIdToRepName[mtgOwnerId] : ownerName;
 
             await storage.upsertMeeting({
+              accountId,
               hubspotId: mtg.id,
               title: mtg.properties.hs_meeting_title || "Untitled Meeting",
               startTime: mtg.properties.hs_meeting_start_time || null,
@@ -252,7 +250,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync meetings: ${e}`, "hubspot");
     }
 
-    // Sync Revenue Goals from HubSpot
     try {
       const goalsResponse = await fetch("https://api.hubapi.com/crm/v3/objects/goal_targets?limit=100&properties=hs_goal_name,hs_target_amount,hs_start_datetime,hs_end_datetime", {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -262,7 +259,6 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         const goals = goalsData.results || [];
         const now = new Date();
 
-        // Find the best current-period revenue goal
         let currentGoal: any = null;
         let fallbackGoal: any = null;
 
@@ -286,7 +282,7 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
         if (selectedGoal) {
           const targetAmount = parseFloat(selectedGoal.properties.hs_target_amount) || 0;
           if (targetAmount > 0) {
-            await storage.setSetting("hubspotRevenueGoal", String(targetAmount));
+            await storage.setSetting(accountId, "hubspotRevenueGoal", String(targetAmount));
             log(`Synced revenue goal from HubSpot: $${targetAmount} (${selectedGoal.properties.hs_goal_name || "unnamed"})`, "hubspot");
           }
         }
@@ -295,24 +291,23 @@ export async function syncHubSpot(): Promise<{ success: boolean; recordsProcesse
       log(`Warning: Could not sync goals: ${e}`, "hubspot");
     }
 
-    // Clean up any non-rep data that may exist from prior syncs
     try {
       const { cleanupNonRepData } = await import("../storage");
-      await cleanupNonRepData();
+      await cleanupNonRepData(accountId);
     } catch (e) {
       log(`Warning: Could not clean up non-rep data: ${e}`, "hubspot");
     }
 
-    const existingConn = await storage.getConnection("hubspot");
-    await storage.upsertConnection("hubspot", true, existingConn?.config, true);
-    const reps = await storage.getActiveSalesReps();
+    const existingConn = await storage.getConnection(accountId, "hubspot");
+    await storage.upsertConnection(accountId, "hubspot", true, existingConn?.config, true);
+    const reps = await storage.getActiveSalesReps(accountId);
     const repNamesList = reps.map(r => r.name).join(", ") || "no reps configured";
-    await storage.createSyncLog("hubspot", "completed", `Synced ${recordsProcessed} records (${repNamesList})`, recordsProcessed);
+    await storage.createSyncLog(accountId, "hubspot", "completed", `Synced ${recordsProcessed} records (${repNamesList})`, recordsProcessed);
 
     return { success: true, recordsProcessed };
   } catch (error: any) {
     const errMsg = error.message || String(error);
-    await storage.createSyncLog("hubspot", "error", errMsg, recordsProcessed);
+    await storage.createSyncLog(accountId, "hubspot", "error", errMsg, recordsProcessed);
     return { success: false, recordsProcessed, error: errMsg };
   }
 }

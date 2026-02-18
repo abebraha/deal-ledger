@@ -1,11 +1,11 @@
 import { storage } from "../storage";
 
-export async function computeMetricsForReport(periodStart?: string, periodEnd?: string) {
-  const kpis = await storage.computeKPIs(periodStart, periodEnd);
-  const allDeals = await storage.getDeals();
-  const allActivities = await storage.getActivities();
-  const allMeetings = await storage.getMeetings();
-  const firefliesMtgs = await storage.getFirefliesMeetings();
+export async function computeMetricsForReport(accountId: number, periodStart?: string, periodEnd?: string) {
+  const kpis = await storage.computeKPIs(accountId, periodStart, periodEnd);
+  const allDeals = await storage.getDeals(accountId);
+  const allActivities = await storage.getActivities(accountId);
+  const allMeetings = await storage.getMeetings(accountId);
+  const firefliesMtgs = await storage.getFirefliesMeetings(accountId);
 
   const periodActivities = filterByDateRange(allActivities, 'activityDate', periodStart, periodEnd);
   const periodMeetings = filterByDateRange(allMeetings, 'startTime', periodStart, periodEnd);
@@ -23,7 +23,7 @@ export async function computeMetricsForReport(periodStart?: string, periodEnd?: 
       hubspotUrl: d.hubspotUrl,
     }));
 
-  const configuredReps = await storage.getActiveSalesReps();
+  const configuredReps = await storage.getActiveSalesReps(accountId);
   const repNames = configuredReps.length > 0
     ? configuredReps.map(r => r.name)
     : extractRepNamesFromData(allDeals, allActivities);

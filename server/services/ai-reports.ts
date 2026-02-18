@@ -28,11 +28,11 @@ RULES:
 - Format numbers with commas (e.g., $125,000).
 - Use --- horizontal rules between major sections.`;
 
-export async function generateWeeklyEmail(selectedMeetingIds?: number[]): Promise<string> {
+export async function generateWeeklyEmail(accountId: number, selectedMeetingIds?: number[]): Promise<string> {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
-  const metrics = await computeMetricsForReport(weekAgo.toISOString(), now.toISOString());
-  const allFirefliesMeetings = await storage.getFirefliesMeetings();
+  const metrics = await computeMetricsForReport(accountId, weekAgo.toISOString(), now.toISOString());
+  const allFirefliesMeetings = await storage.getFirefliesMeetings(accountId);
 
   let selectedMeetings: typeof allFirefliesMeetings;
 
@@ -122,11 +122,11 @@ STYLE RULES:
   return response.choices[0]?.message?.content || "Failed to generate report.";
 }
 
-export async function generateBiweeklyScorecard(selectedMeetingIds?: number[]): Promise<string> {
+export async function generateBiweeklyScorecard(accountId: number, selectedMeetingIds?: number[]): Promise<string> {
   const now = new Date();
   const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
-  const metrics = await computeMetricsForReport(twoWeeksAgo.toISOString(), now.toISOString());
-  const allFirefliesMeetings = await storage.getFirefliesMeetings();
+  const metrics = await computeMetricsForReport(accountId, twoWeeksAgo.toISOString(), now.toISOString());
+  const allFirefliesMeetings = await storage.getFirefliesMeetings(accountId);
 
   let selectedMeetings: typeof allFirefliesMeetings;
   if (selectedMeetingIds && selectedMeetingIds.length > 0) {
@@ -211,45 +211,11 @@ For EACH rep, extract from Fireflies meeting transcripts and summaries:
   return response.choices[0]?.message?.content || "Failed to generate scorecard.";
 }
 
-export async function generateCustomReport(userPrompt: string): Promise<string> {
+export async function streamCustomReport(accountId: number, userPrompt: string) {
   const now = new Date();
   const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
-  const metrics = await computeMetricsForReport(twoWeeksAgo.toISOString(), now.toISOString());
-  const allDeals = await storage.getDeals();
-
-  const prompt = `User request: "${userPrompt}"
-
-AVAILABLE DATA:
-KPIs: ${JSON.stringify(metrics.kpis, null, 2)}
-
-REP BREAKDOWN:
-${JSON.stringify(metrics.byRep, null, 2)}
-
-ALL DEALS:
-${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
-
-FIREFLIES MEETING SUMMARIES (for context on what reps have been working on):
-${JSON.stringify(metrics.recentFirefliesMeetings, null, 2)}
-
-Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.`;
-
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      { role: "system", content: SCORECARD_SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
-    max_tokens: 4096,
-  });
-
-  return response.choices[0]?.message?.content || "Failed to generate custom report.";
-}
-
-export async function streamCustomReport(userPrompt: string) {
-  const now = new Date();
-  const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
-  const metrics = await computeMetricsForReport(twoWeeksAgo.toISOString(), now.toISOString());
-  const allDeals = await storage.getDeals();
+  const metrics = await computeMetricsForReport(accountId, twoWeeksAgo.toISOString(), now.toISOString());
+  const allDeals = await storage.getDeals(accountId);
 
   const prompt = `User request: "${userPrompt}"
 

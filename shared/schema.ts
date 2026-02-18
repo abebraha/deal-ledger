@@ -1,11 +1,19 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, boolean, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, real, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// ─── Accounts (multi-tenant) ───
+export const accounts = pgTable("accounts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
 // ─── Conversations (for AI chat) ───
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -21,7 +29,8 @@ export const messages = pgTable("messages", {
 // ─── Deals (spine of the app) ───
 export const deals = pgTable("deals", {
   id: serial("id").primaryKey(),
-  hubspotId: text("hubspot_id").unique(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  hubspotId: text("hubspot_id"),
   name: text("name").notNull(),
   amount: real("amount").default(0),
   stage: text("stage").notNull(),
@@ -48,7 +57,8 @@ export const dealStageHistory = pgTable("deal_stage_history", {
 // ─── Activities (calls/emails/notes/tasks from HubSpot) ───
 export const activities = pgTable("activities", {
   id: serial("id").primaryKey(),
-  hubspotId: text("hubspot_id").unique(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  hubspotId: text("hubspot_id"),
   dealId: integer("deal_id").references(() => deals.id, { onDelete: "set null" }),
   type: text("type").notNull(),
   subject: text("subject"),
@@ -62,7 +72,8 @@ export const activities = pgTable("activities", {
 // ─── Meetings (from HubSpot) ───
 export const meetings = pgTable("meetings", {
   id: serial("id").primaryKey(),
-  hubspotId: text("hubspot_id").unique(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  hubspotId: text("hubspot_id"),
   dealId: integer("deal_id").references(() => deals.id, { onDelete: "set null" }),
   title: text("title"),
   startTime: text("start_time"),
@@ -77,6 +88,7 @@ export const meetings = pgTable("meetings", {
 // ─── Commitment Ledger (from Fireflies) ───
 export const commitments = pgTable("commitments", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   firefliesMeetingId: text("fireflies_meeting_id"),
   meetingDate: text("meeting_date"),
   meetingTitle: text("meeting_title"),
@@ -94,7 +106,8 @@ export const commitments = pgTable("commitments", {
 // ─── Fireflies Meeting Summaries ───
 export const firefliesMeetings = pgTable("fireflies_meetings", {
   id: serial("id").primaryKey(),
-  firefliesId: text("fireflies_id").unique(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  firefliesId: text("fireflies_id"),
   title: text("title"),
   meetingDate: text("meeting_date"),
   duration: integer("duration"),
@@ -109,6 +122,7 @@ export const firefliesMeetings = pgTable("fireflies_meetings", {
 // ─── Sales Reps (dynamic rep management) ───
 export const salesReps = pgTable("sales_reps", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   hubspotOwnerId: text("hubspot_owner_id"),
   excluded: boolean("excluded").default(false).notNull(),
@@ -118,7 +132,8 @@ export const salesReps = pgTable("sales_reps", {
 // ─── Settings (goals/targets) ───
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
-  key: text("key").notNull().unique(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
   value: text("value").notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -126,6 +141,7 @@ export const settings = pgTable("settings", {
 // ─── Generated Reports ───
 export const reports = pgTable("reports", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -139,6 +155,7 @@ export const reports = pgTable("reports", {
 // ─── Sync Log ───
 export const syncLogs = pgTable("sync_logs", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   source: text("source").notNull(),
   status: text("status").notNull(),
   details: text("details"),
@@ -150,7 +167,8 @@ export const syncLogs = pgTable("sync_logs", {
 // ─── Connection Config ───
 export const connections = pgTable("connections", {
   id: serial("id").primaryKey(),
-  service: text("service").notNull().unique(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  service: text("service").notNull(),
   connected: boolean("connected").default(false).notNull(),
   lastSyncAt: timestamp("last_sync_at"),
   config: jsonb("config"),
@@ -158,6 +176,7 @@ export const connections = pgTable("connections", {
 });
 
 // ─── Insert Schemas ───
+export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true, createdAt: true });
 export const insertDealSchema = createInsertSchema(deals).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertActivitySchema = createInsertSchema(activities).omit({ id: true, createdAt: true });
 export const insertMeetingSchema = createInsertSchema(meetings).omit({ id: true, createdAt: true });
@@ -172,6 +191,8 @@ export const insertConversationSchema = createInsertSchema(conversations).omit({
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
 // ─── Types ───
+export type Account = typeof accounts.$inferSelect;
+export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type SalesRep = typeof salesReps.$inferSelect;
 export type InsertSalesRep = z.infer<typeof insertSalesRepSchema>;
 export type Deal = typeof deals.$inferSelect;

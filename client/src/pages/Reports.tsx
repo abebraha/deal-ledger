@@ -9,6 +9,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useState, useCallback, memo } from "react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useApp } from "@/lib/context";
 import ReactMarkdown from "react-markdown";
 
 interface Report {
@@ -120,26 +121,30 @@ const MeetingSelector = memo(({
 MeetingSelector.displayName = "MeetingSelector";
 
 export function Reports() {
+  const { accountId } = useApp();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [weeklyMeetingIds, setWeeklyMeetingIds] = useState<number[]>([]);
   const [biweeklyMeetingIds, setBiweeklyMeetingIds] = useState<number[]>([]);
+  const base = `/api/accounts/${accountId}`;
 
   const { data: reports = [], isLoading } = useQuery<Report[]>({
-    queryKey: ["/api/reports"],
+    queryKey: [base, "reports"],
+    queryFn: async () => { const r = await fetch(`${base}/reports`); return r.json(); },
   });
 
   const { data: firefliesMeetings = [], isLoading: meetingsLoading, refetch: refetchMeetings } = useQuery<FirefliesMeeting[]>({
-    queryKey: ["/api/fireflies-meetings"],
+    queryKey: [base, "fireflies-meetings"],
+    queryFn: async () => { const r = await fetch(`${base}/fireflies-meetings`); return r.json(); },
   });
 
   const generateWeekly = useMutation({
     mutationFn: async (meetingIds: number[]) => {
-      await apiRequest("POST", "/api/reports/generate/weekly", { meetingIds });
+      await apiRequest("POST", `${base}/reports/generate/weekly`, { meetingIds });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/reports"] });
+      qc.invalidateQueries({ queryKey: [base, "reports"] });
       setWeeklyMeetingIds([]);
       toast({ title: "Report Generated", description: "Meeting recap has been generated." });
     },
@@ -150,10 +155,10 @@ export function Reports() {
 
   const generateBiweekly = useMutation({
     mutationFn: async (meetingIds: number[]) => {
-      await apiRequest("POST", "/api/reports/generate/biweekly", { meetingIds });
+      await apiRequest("POST", `${base}/reports/generate/biweekly`, { meetingIds });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/reports"] });
+      qc.invalidateQueries({ queryKey: [base, "reports"] });
       setBiweeklyMeetingIds([]);
       toast({ title: "Report Generated", description: "Bi-weekly scorecard has been generated." });
     },
@@ -164,10 +169,10 @@ export function Reports() {
 
   const markAsSent = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("POST", `/api/reports/${id}/send`);
+      await apiRequest("POST", `${base}/reports/${id}/send`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/reports"] });
+      qc.invalidateQueries({ queryKey: [base, "reports"] });
       toast({ title: "Report Sent", description: "Report has been marked as sent." });
     },
     onError: (err: Error) => {
@@ -178,7 +183,7 @@ export function Reports() {
   const isGenerating = generateWeekly.isPending || generateBiweekly.isPending;
 
   const handleDownloadPDF = (report: Report) => {
-    window.open(`/api/reports/${report.id}/pdf`, "_blank");
+    window.open(`${base}/reports/${report.id}/pdf`, "_blank");
   };
 
   const toggleWeekly = useCallback((id: number) => {

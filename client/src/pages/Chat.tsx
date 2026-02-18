@@ -4,8 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, Sparkles, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useApp } from "@/lib/context";
 
 export function ChatInterface() {
+  const { accountId } = useApp();
   const [messages, setMessages] = useState<{ role: "user" | "ai"; content: string }[]>([
     { role: "ai", content: "Hello! I can generate custom reports on your pipeline, activities, and team performance. What would you like to see?" }
   ]);
@@ -30,7 +32,7 @@ export function ChatInterface() {
     setMessages(prev => [...prev, { role: "ai", content: "" }]);
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(`/api/accounts/${accountId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage }),
@@ -125,7 +127,7 @@ export function ChatInterface() {
         <div className="p-4 border-t bg-background">
           <div className="flex gap-2">
             <Input 
-              placeholder="Ask for a report (e.g., 'Show me deals closing next month' or 'What has Deb been working on?')" 
+              placeholder="Ask for a report (e.g., 'Show me deals closing next month')" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}

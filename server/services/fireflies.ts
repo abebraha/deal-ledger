@@ -3,10 +3,10 @@ import { log } from "../index";
 
 const FIREFLIES_API = "https://api.fireflies.ai/graphql";
 
-export async function syncFireflies(): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
-  let apiKey = process.env.FIREFLIES_API_KEY;
+export async function syncFireflies(accountId: number): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
+  let apiKey: string | undefined;
   try {
-    const conn = await storage.getConnection("fireflies");
+    const conn = await storage.getConnection(accountId, "fireflies");
     if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
       apiKey = (conn.config as any).apiKey;
     }
@@ -81,6 +81,7 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
         .join("\n");
 
       await storage.upsertFirefliesMeeting({
+        accountId,
         firefliesId: transcript.id,
         title: transcript.title || "Untitled Meeting",
         meetingDate,
@@ -98,7 +99,7 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
         ? actionItems.map((item: any) => typeof item === "string" ? item : item.text || JSON.stringify(item))
         : [];
       if (actionItemsList.length > 0) {
-        const existingMeeting = await storage.getFirefliesMeetings();
+        const existingMeeting = await storage.getFirefliesMeetings(accountId);
         const match = existingMeeting.find(m => m.firefliesId === transcript.id);
         if (match) {
           const enrichedSummary = (match.summary || "") + "\n\nAction Items:\n" + actionItemsList.map((a: string) => `- ${a}`).join("\n");
@@ -110,14 +111,14 @@ export async function syncFireflies(): Promise<{ success: boolean; recordsProces
       }
     }
 
-    const existingConn = await storage.getConnection("fireflies");
-    await storage.upsertConnection("fireflies", true, existingConn?.config, true);
-    await storage.createSyncLog("fireflies", "completed", `Synced ${recordsProcessed} records (${transcripts.length} meetings)`, recordsProcessed);
+    const existingConn = await storage.getConnection(accountId, "fireflies");
+    await storage.upsertConnection(accountId, "fireflies", true, existingConn?.config, true);
+    await storage.createSyncLog(accountId, "fireflies", "completed", `Synced ${recordsProcessed} records (${transcripts.length} meetings)`, recordsProcessed);
 
     return { success: true, recordsProcessed };
   } catch (error: any) {
     const errMsg = error.message || String(error);
-    await storage.createSyncLog("fireflies", "error", errMsg, recordsProcessed);
+    await storage.createSyncLog(accountId, "fireflies", "error", errMsg, recordsProcessed);
     return { success: false, recordsProcessed, error: errMsg };
   }
 }

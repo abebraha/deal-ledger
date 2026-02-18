@@ -8,58 +8,80 @@ import { log } from "../index";
 let biweeklyCounter = 0;
 
 export function startScheduler() {
-  // Hourly sync (at minute 0 of every hour)
   cron.schedule("0 * * * *", async () => {
-    log("Running hourly sync...", "scheduler");
+    log("Running hourly sync for all accounts...", "scheduler");
     try {
-      const hubspotResult = await syncHubSpot();
-      log(`HubSpot sync: ${hubspotResult.success ? "OK" : "FAIL"} (${hubspotResult.recordsProcessed} records)`, "scheduler");
+      const accounts = await storage.getAccounts();
+      for (const account of accounts) {
+        const hubspotConn = await storage.getConnection(account.id, "hubspot");
+        if (hubspotConn?.connected) {
+          const hubspotResult = await syncHubSpot(account.id);
+          log(`[${account.name}] HubSpot sync: ${hubspotResult.success ? "OK" : "FAIL"} (${hubspotResult.recordsProcessed} records)`, "scheduler");
+        }
 
-      const firefliesResult = await syncFireflies();
-      log(`Fireflies sync: ${firefliesResult.success ? "OK" : "FAIL"} (${firefliesResult.recordsProcessed} records)`, "scheduler");
+        const firefliesConn = await storage.getConnection(account.id, "fireflies");
+        if (firefliesConn?.connected) {
+          const firefliesResult = await syncFireflies(account.id);
+          log(`[${account.name}] Fireflies sync: ${firefliesResult.success ? "OK" : "FAIL"} (${firefliesResult.recordsProcessed} records)`, "scheduler");
+        }
+      }
     } catch (err) {
       log(`Hourly sync error: ${err}`, "scheduler");
     }
   });
 
-  // Weekly email - Monday 8:00 AM
   cron.schedule("0 8 * * 1", async () => {
-    log("Generating weekly email...", "scheduler");
+    log("Generating weekly email for all accounts...", "scheduler");
     try {
-      const content = await generateWeeklyEmail();
-      const kpis = await storage.computeKPIs();
-      await storage.createReport({
-        type: "weekly",
-        title: `Weekly Pipeline Update - ${new Date().toLocaleDateString()}`,
-        content,
-        kpis,
-        periodStart: getWeekStart(),
-        periodEnd: new Date().toISOString().split("T")[0],
-      });
-      log("Weekly email generated successfully", "scheduler");
+      const accounts = await storage.getAccounts();
+      for (const account of accounts) {
+        try {
+          const content = await generateWeeklyEmail(account.id);
+          const kpis = await storage.computeKPIs(account.id);
+          await storage.createReport({
+            accountId: account.id,
+            type: "weekly",
+            title: `Weekly Pipeline Update - ${new Date().toLocaleDateString()}`,
+            content,
+            kpis,
+            periodStart: getWeekStart(),
+            periodEnd: new Date().toISOString().split("T")[0],
+          });
+          log(`[${account.name}] Weekly email generated successfully`, "scheduler");
+        } catch (err) {
+          log(`[${account.name}] Weekly email error: ${err}`, "scheduler");
+        }
+      }
     } catch (err) {
       log(`Weekly email error: ${err}`, "scheduler");
     }
   });
 
-  // Biweekly scorecard - Tuesday 8:00 AM (every other week)
   cron.schedule("0 8 * * 2", async () => {
     biweeklyCounter++;
     if (biweeklyCounter % 2 !== 0) return;
     
-    log("Generating biweekly scorecard...", "scheduler");
+    log("Generating biweekly scorecard for all accounts...", "scheduler");
     try {
-      const content = await generateBiweeklyScorecard();
-      const kpis = await storage.computeKPIs();
-      await storage.createReport({
-        type: "biweekly",
-        title: `CEO Scorecard - ${new Date().toLocaleDateString()}`,
-        content,
-        kpis,
-        periodStart: getBiweeklyStart(),
-        periodEnd: new Date().toISOString().split("T")[0],
-      });
-      log("Biweekly scorecard generated successfully", "scheduler");
+      const accounts = await storage.getAccounts();
+      for (const account of accounts) {
+        try {
+          const content = await generateBiweeklyScorecard(account.id);
+          const kpis = await storage.computeKPIs(account.id);
+          await storage.createReport({
+            accountId: account.id,
+            type: "biweekly",
+            title: `CEO Scorecard - ${new Date().toLocaleDateString()}`,
+            content,
+            kpis,
+            periodStart: getBiweeklyStart(),
+            periodEnd: new Date().toISOString().split("T")[0],
+          });
+          log(`[${account.name}] Biweekly scorecard generated successfully`, "scheduler");
+        } catch (err) {
+          log(`[${account.name}] Biweekly scorecard error: ${err}`, "scheduler");
+        }
+      }
     } catch (err) {
       log(`Biweekly scorecard error: ${err}`, "scheduler");
     }

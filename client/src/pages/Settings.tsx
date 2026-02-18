@@ -27,9 +27,10 @@ interface SalesRep {
 }
 
 export function Settings() {
-  const { settings, saveSettings, isSavingSettings, connections } = useApp();
+  const { accountId, settings, saveSettings, isSavingSettings, connections } = useApp();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const base = `/api/accounts/${accountId}`;
 
   const [formData, setFormData] = useState({
     weeklyMeetingsGoal: 15,
@@ -41,20 +42,22 @@ export function Settings() {
   const hubspotConnected = connections?.hubspot?.connected;
 
   const { data: hubspotOwners = [], isLoading: ownersLoading } = useQuery<HubSpotOwner[]>({
-    queryKey: ["/api/hubspot/owners"],
+    queryKey: [base, "hubspot/owners"],
+    queryFn: async () => { const r = await fetch(`${base}/hubspot/owners`); return r.json(); },
     enabled: !!hubspotConnected,
   });
 
   const { data: salesReps = [], isLoading: repsLoading } = useQuery<SalesRep[]>({
-    queryKey: ["/api/sales-reps"],
+    queryKey: [base, "sales-reps"],
+    queryFn: async () => { const r = await fetch(`${base}/sales-reps`); return r.json(); },
   });
 
   const createRep = useMutation({
     mutationFn: async (name: string) => {
-      await apiRequest("POST", "/api/sales-reps", { name });
+      await apiRequest("POST", `${base}/sales-reps`, { name });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sales-reps"] });
+      qc.invalidateQueries({ queryKey: [base, "sales-reps"] });
       setNewRepName("");
       toast({ title: "Rep Added", description: "New sales rep has been added." });
     },
@@ -65,10 +68,10 @@ export function Settings() {
 
   const updateRep = useMutation({
     mutationFn: async ({ id, ...data }: { id: number; hubspotOwnerId?: string | null; excluded?: boolean; name?: string }) => {
-      await apiRequest("PATCH", `/api/sales-reps/${id}`, data);
+      await apiRequest("PATCH", `${base}/sales-reps/${id}`, data);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sales-reps"] });
+      qc.invalidateQueries({ queryKey: [base, "sales-reps"] });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -77,10 +80,10 @@ export function Settings() {
 
   const deleteRep = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/sales-reps/${id}`);
+      await apiRequest("DELETE", `${base}/sales-reps/${id}`);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sales-reps"] });
+      qc.invalidateQueries({ queryKey: [base, "sales-reps"] });
       toast({ title: "Rep Removed", description: "Sales rep has been removed." });
     },
     onError: (err: Error) => {
