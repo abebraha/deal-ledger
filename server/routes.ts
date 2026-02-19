@@ -485,6 +485,15 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/accounts/:accountId/reports/:id", async (req, res) => {
+    try {
+      await storage.deleteReport(getAccountId(req), parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/accounts/:accountId/reports/:id/pdf", async (req, res) => {
     try {
       const report = await storage.getReport(getAccountId(req), parseInt(req.params.id));
@@ -502,6 +511,60 @@ export async function registerRoutes(
         periodEnd: report.periodEnd,
         createdAt: report.createdAt.toISOString(),
       }, res);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Save custom report ───
+  app.post("/api/accounts/:accountId/reports/save-custom", async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const { title, content, prompt } = req.body;
+      if (!content) return res.status(400).json({ error: "Content is required" });
+
+      const kpis = await storage.computeKPIs(accountId);
+      const report = await storage.createReport({
+        accountId,
+        type: "custom",
+        title: title || `Custom Report - ${new Date().toLocaleDateString()}`,
+        content,
+        kpis,
+        periodStart: new Date(Date.now() - 14 * 86400000).toISOString().split("T")[0],
+        periodEnd: new Date().toISOString().split("T")[0],
+      });
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Generate custom report (non-streaming, saved) ───
+  app.post("/api/accounts/:accountId/reports/generate/custom", async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const { prompt } = req.body;
+      if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+
+      const stream = await streamCustomReport(accountId, prompt);
+      let fullContent = "";
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) fullContent += content;
+      }
+
+      const kpis = await storage.computeKPIs(accountId);
+      const titleMatch = prompt.substring(0, 80);
+      const report = await storage.createReport({
+        accountId,
+        type: "custom",
+        title: `Custom: ${titleMatch}${prompt.length > 80 ? "..." : ""}`,
+        content: fullContent,
+        kpis,
+        periodStart: new Date(Date.now() - 14 * 86400000).toISOString().split("T")[0],
+        periodEnd: new Date().toISOString().split("T")[0],
+      });
+      res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

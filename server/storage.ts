@@ -45,6 +45,7 @@ export interface IStorage {
   getReports(accountId: number, type?: string): Promise<Report[]>;
   getReport(accountId: number, id: number): Promise<Report | undefined>;
   createReport(report: InsertReport): Promise<Report>;
+  deleteReport(accountId: number, id: number): Promise<void>;
   markReportSent(accountId: number, id: number): Promise<void>;
   
   // Sync logs
@@ -231,6 +232,10 @@ class DatabaseStorage implements IStorage {
   async createReport(report: InsertReport) {
     const [created] = await db.insert(reports).values(report).returning();
     return created;
+  }
+
+  async deleteReport(accountId: number, id: number) {
+    await db.delete(reports).where(and(eq(reports.id, id), eq(reports.accountId, accountId)));
   }
 
   async markReportSent(accountId: number, id: number) {
