@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { syncHubSpot } from "./hubspot";
 import { syncFireflies } from "./fireflies";
+import { syncClose } from "./close";
 import { generateWeeklyEmail, generateBiweeklyScorecard } from "./ai-reports";
 import { storage } from "../storage";
 import { log } from "../index";
@@ -23,6 +24,12 @@ export function startScheduler() {
         if (firefliesConn?.connected) {
           const firefliesResult = await syncFireflies(account.id);
           log(`[${account.name}] Fireflies sync: ${firefliesResult.success ? "OK" : "FAIL"} (${firefliesResult.recordsProcessed} records)`, "scheduler");
+        }
+
+        const closeConn = await storage.getConnection(account.id, "close");
+        if (closeConn?.connected) {
+          const closeResult = await syncClose(account.id);
+          log(`[${account.name}] Close sync: ${closeResult.success ? "OK" : "FAIL"} (${closeResult.recordsProcessed} records)`, "scheduler");
         }
       }
     } catch (err) {

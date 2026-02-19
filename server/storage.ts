@@ -113,9 +113,21 @@ class DatabaseStorage implements IStorage {
     return deal;
   }
 
+  async getDealByCloseId(accountId: number, closeId: string) {
+    const [deal] = await db.select().from(deals).where(and(eq(deals.accountId, accountId), eq(deals.closeId, closeId)));
+    return deal;
+  }
+
   async upsertDeal(deal: InsertDeal) {
     if (deal.hubspotId) {
       const existing = await this.getDealByHubspotId(deal.accountId, deal.hubspotId);
+      if (existing) {
+        const [updated] = await db.update(deals).set({ ...deal, updatedAt: new Date() }).where(eq(deals.id, existing.id)).returning();
+        return updated;
+      }
+    }
+    if (deal.closeId) {
+      const existing = await this.getDealByCloseId(deal.accountId, deal.closeId);
       if (existing) {
         const [updated] = await db.update(deals).set({ ...deal, updatedAt: new Date() }).where(eq(deals.id, existing.id)).returning();
         return updated;
@@ -141,6 +153,13 @@ class DatabaseStorage implements IStorage {
         return updated;
       }
     }
+    if (activity.closeId) {
+      const [existing] = await db.select().from(activities).where(and(eq(activities.accountId, activity.accountId), eq(activities.closeId, activity.closeId)));
+      if (existing) {
+        const [updated] = await db.update(activities).set(activity).where(eq(activities.id, existing.id)).returning();
+        return updated;
+      }
+    }
     const [created] = await db.insert(activities).values(activity).returning();
     return created;
   }
@@ -156,6 +175,13 @@ class DatabaseStorage implements IStorage {
   async upsertMeeting(meeting: InsertMeeting) {
     if (meeting.hubspotId) {
       const [existing] = await db.select().from(meetings).where(and(eq(meetings.accountId, meeting.accountId), eq(meetings.hubspotId, meeting.hubspotId)));
+      if (existing) {
+        const [updated] = await db.update(meetings).set(meeting).where(eq(meetings.id, existing.id)).returning();
+        return updated;
+      }
+    }
+    if (meeting.closeId) {
+      const [existing] = await db.select().from(meetings).where(and(eq(meetings.accountId, meeting.accountId), eq(meetings.closeId, meeting.closeId)));
       if (existing) {
         const [updated] = await db.update(meetings).set(meeting).where(eq(meetings.id, existing.id)).returning();
         return updated;

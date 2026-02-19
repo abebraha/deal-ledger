@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Users, Plus, Trash2, UserX } from "lucide-react";
 
-interface HubSpotOwner {
+interface CrmUser {
   id: string;
   name: string;
   email: string | null;
@@ -23,6 +23,7 @@ interface SalesRep {
   id: number;
   name: string;
   hubspotOwnerId: string | null;
+  closeUserId: string | null;
   excluded: boolean;
 }
 
@@ -40,11 +41,18 @@ export function Settings() {
   const [newRepName, setNewRepName] = useState("");
 
   const hubspotConnected = connections?.hubspot?.connected;
+  const closeConnected = connections?.close?.connected;
 
-  const { data: hubspotOwners = [], isLoading: ownersLoading } = useQuery<HubSpotOwner[]>({
+  const { data: hubspotOwners = [], isLoading: ownersLoading } = useQuery<CrmUser[]>({
     queryKey: [base, "hubspot/owners"],
     queryFn: async () => { const r = await fetch(`${base}/hubspot/owners`); return r.json(); },
     enabled: !!hubspotConnected,
+  });
+
+  const { data: closeUsers = [], isLoading: closeUsersLoading } = useQuery<CrmUser[]>({
+    queryKey: [base, "close/users"],
+    queryFn: async () => { const r = await fetch(`${base}/close/users`); return r.json(); },
+    enabled: !!closeConnected,
   });
 
   const { data: salesReps = [], isLoading: repsLoading } = useQuery<SalesRep[]>({
@@ -67,7 +75,7 @@ export function Settings() {
   });
 
   const updateRep = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; hubspotOwnerId?: string | null; excluded?: boolean; name?: string }) => {
+    mutationFn: async ({ id, ...data }: { id: number; hubspotOwnerId?: string | null; closeUserId?: string | null; excluded?: boolean; name?: string }) => {
       await apiRequest("PATCH", `${base}/sales-reps/${id}`, data);
     },
     onSuccess: () => {
@@ -122,6 +130,11 @@ export function Settings() {
   const getOwnerLabel = (ownerId: string) => {
     const owner = hubspotOwners.find(o => o.id === ownerId);
     return owner ? `${owner.name}${owner.email ? ` (${owner.email})` : ""}` : "Unknown";
+  };
+
+  const getCloseUserLabel = (userId: string) => {
+    const user = closeUsers.find(u => u.id === userId);
+    return user ? `${user.name}${user.email ? ` (${user.email})` : ""}` : "Unknown";
   };
 
   return (
@@ -230,8 +243,40 @@ export function Settings() {
                         </div>
                       )}
 
-                      {!rep.excluded && !hubspotConnected && (
-                        <p className="text-xs text-muted-foreground">Connect HubSpot to map this rep to their account.</p>
+                      {!rep.excluded && closeConnected && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Close CRM User</Label>
+                          {closeUsersLoading ? (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Loading...
+                            </div>
+                          ) : (
+                            <Select
+                              value={rep.closeUserId || "unmapped"}
+                              onValueChange={(val) => updateRep.mutate({ id: rep.id, closeUserId: val === "unmapped" ? null : val })}
+                            >
+                              <SelectTrigger className="h-9" data-testid={`select-close-${rep.id}`}>
+                                <SelectValue placeholder="Select Close CRM user" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unmapped">Auto-detect (name matching)</SelectItem>
+                                {closeUsers.map(user => (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.name}{user.email ? ` (${user.email})` : ""}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {rep.closeUserId && (
+                            <p className="text-xs text-muted-foreground">Mapped to: {getCloseUserLabel(rep.closeUserId)}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {!rep.excluded && !hubspotConnected && !closeConnected && (
+                        <p className="text-xs text-muted-foreground">Connect HubSpot or Close CRM to map this rep to their account.</p>
                       )}
                     </div>
                   ))}

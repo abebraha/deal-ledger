@@ -1,13 +1,13 @@
 # DealFlow - CEO Sales Intelligence App
 
 ## Overview
-Multi-tenant web application for Abe (CEO consultant) that manages multiple client company accounts. Each account has isolated HubSpot/Fireflies connections, sales reps, deals, activities, meetings, and reports. The app syncs data from HubSpot and Fireflies, computes deterministic sales metrics, and uses AI to generate weekly meeting recaps and biweekly CEO scorecard reports formatted as downloadable PDFs.
+Multi-tenant web application for Abe (CEO consultant) that manages multiple client company accounts. Each account has isolated HubSpot/Close CRM/Fireflies connections, sales reps, deals, activities, meetings, and reports. The app syncs data from HubSpot, Close CRM, and Fireflies, computes deterministic sales metrics, and uses AI to generate weekly meeting recaps and biweekly CEO scorecard reports formatted as downloadable PDFs.
 
 ## Architecture
 - **Frontend**: React + Vite + TypeScript, using shadcn/ui components, wouter v3 routing (nested), @tanstack/react-query
 - **Backend**: Express.js API, Drizzle ORM with PostgreSQL
 - **AI**: OpenAI via Replit AI Integrations (env vars: AI_INTEGRATIONS_OPENAI_API_KEY, AI_INTEGRATIONS_OPENAI_BASE_URL)
-- **Sync**: HubSpot REST API, Fireflies GraphQL API
+- **Sync**: HubSpot REST API, Close CRM REST API, Fireflies GraphQL API
 - **Scheduler**: node-cron for hourly syncs, weekly emails (Mon 8AM), biweekly scorecards (every other Tue 8AM)
 - **Multi-tenancy**: Account-based isolation via `account_id` foreign keys with CASCADE delete on all data tables
 
@@ -16,7 +16,7 @@ Multi-tenant web application for Abe (CEO consultant) that manages multiple clie
 - **Deal-centric**: Deals are the spine; activities, meetings all link to deals
 - **Deterministic metrics**: KPIs computed in code (not by AI). AI only narrates and cites underlying records
 - **Single user**: No authentication needed, only Abe uses the app
-- **Owner name resolution**: HubSpot sync resolves owner IDs to configured rep names from sales_reps table
+- **Owner name resolution**: HubSpot and Close sync resolve owner/user IDs to configured rep names from sales_reps table
 - **Email delivery**: Mocked with "send" button (no actual email sending)
 - **API key storage**: Per-account connection configs stored in connections table (not global secrets)
 
@@ -28,6 +28,7 @@ server/storage.ts         - Storage layer with CRUD + deterministic KPI computat
 server/routes.ts          - All API endpoints under /api/accounts/:accountId/...
 server/services/
   hubspot.ts              - HubSpot sync service (account-scoped)
+  close.ts                - Close CRM sync service (account-scoped)
   fireflies.ts            - Fireflies sync service (account-scoped)
   metrics.ts              - Metrics computation for reports (per-rep breakdown, account-scoped)
   ai-reports.ts           - AI report generation (weekly, biweekly, streaming, account-scoped)
@@ -56,8 +57,9 @@ client/src/
 - GET/POST /settings - Goals/targets
 - GET/POST /sales-reps, PATCH/DELETE /sales-reps/:id - Dynamic rep management
 - GET /hubspot/owners - HubSpot owner list for rep mapping
-- GET /connections, POST /connections/:service/connect|disconnect
-- POST /sync/hubspot, POST /sync/fireflies, GET /sync/logs
+- GET /close/users - Close CRM user list for rep mapping
+- GET /connections, POST /connections/:service/connect|disconnect (hubspot, fireflies, close)
+- POST /sync/hubspot, POST /sync/fireflies, POST /sync/close, GET /sync/logs
 - GET /reports, GET /reports/:id, GET /reports/:id/pdf, POST /reports/generate/weekly|biweekly, POST /reports/:id/send
 - GET /fireflies-meetings - Fireflies meetings for report selection
 - POST /chat - Streaming AI chat (SSE)
@@ -72,6 +74,7 @@ client/src/
 - `/accounts/:accountId/settings` - Sales reps, goals
 
 ## Recent Changes
+- 2026-02-19: Close CRM integration — sync opportunities, calls, emails, notes, meetings; closeId/closeUrl on deals/activities/meetings; closeUserId on sales_reps; API key validation, connect/disconnect, manual sync; Close user mapping in Settings; scheduler includes Close sync
 - 2026-02-18: Multi-tenancy — accounts table, account_id on all data tables, API routes restructured to /api/accounts/:accountId/..., frontend AccountsPage + nested routing, scheduler iterates all accounts
 - 2026-02-18: Fixed LinkedIn message sync — Communications API channel type filter corrected from "LINKEDIN" to "LINKEDIN_MESSAGE"
 - 2026-02-18: LinkedIn message syncing from HubSpot Communications API; outbound KPI now includes calls + emails + LinkedIn messages

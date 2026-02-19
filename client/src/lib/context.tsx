@@ -49,6 +49,7 @@ export interface ConnectionInfo {
 export interface ConnectionsData {
   hubspot: ConnectionInfo | null;
   fireflies: ConnectionInfo | null;
+  close: ConnectionInfo | null;
 }
 
 interface AppContextType {
@@ -63,11 +64,12 @@ interface AppContextType {
   isLoading: boolean;
   saveSettings: (data: Record<string, string>) => void;
   isSavingSettings: boolean;
-  connectService: (service: "hubspot" | "fireflies", apiKey: string) => Promise<any>;
-  disconnectService: (service: "hubspot" | "fireflies") => void;
+  connectService: (service: "hubspot" | "fireflies" | "close", apiKey: string) => Promise<any>;
+  disconnectService: (service: "hubspot" | "fireflies" | "close") => void;
   isConnecting: boolean;
   syncHubspot: () => void;
   syncFireflies: () => void;
+  syncClose: () => void;
   isSyncing: boolean;
   refetchAll: () => void;
 }
@@ -117,7 +119,7 @@ export function AppProvider({ accountId, accountName, children }: { accountId: n
   });
 
   const connectServiceMutation = useMutation({
-    mutationFn: async ({ service, apiKey }: { service: "hubspot" | "fireflies"; apiKey: string }) => {
+    mutationFn: async ({ service, apiKey }: { service: "hubspot" | "fireflies" | "close"; apiKey: string }) => {
       const res = await fetch(`${base}/connections/${service}/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,7 +139,7 @@ export function AppProvider({ accountId, accountName, children }: { accountId: n
   });
 
   const disconnectServiceMutation = useMutation({
-    mutationFn: async (service: "hubspot" | "fireflies") => {
+    mutationFn: async (service: "hubspot" | "fireflies" | "close") => {
       await apiRequest("POST", `${base}/connections/${service}/disconnect`);
     },
     onSuccess: () => {
@@ -167,11 +169,23 @@ export function AppProvider({ accountId, accountName, children }: { accountId: n
     },
   });
 
+  const syncCloseMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `${base}/sync/close`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [base, "deals"] });
+      qc.invalidateQueries({ queryKey: [base, "activities"] });
+      qc.invalidateQueries({ queryKey: [base, "kpis"] });
+      qc.invalidateQueries({ queryKey: [base, "connections"] });
+    },
+  });
+
   const refetchAll = () => {
     qc.invalidateQueries({ queryKey: [base] });
   };
 
-  const isSyncing = syncHubspotMutation.isPending || syncFirefliesMutation.isPending;
+  const isSyncing = syncHubspotMutation.isPending || syncFirefliesMutation.isPending || syncCloseMutation.isPending;
 
   return (
     <AppContext.Provider value={{
@@ -191,6 +205,7 @@ export function AppProvider({ accountId, accountName, children }: { accountId: n
       isConnecting: connectServiceMutation.isPending,
       syncHubspot: () => syncHubspotMutation.mutate(),
       syncFireflies: () => syncFirefliesMutation.mutate(),
+      syncClose: () => syncCloseMutation.mutate(),
       isSyncing,
       refetchAll,
     }}>

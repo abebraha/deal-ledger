@@ -40,6 +40,8 @@ export const deals = pgTable("deals", {
   probability: real("probability").default(0),
   companyName: text("company_name"),
   hubspotUrl: text("hubspot_url"),
+  closeId: text("close_id"),
+  closeUrl: text("close_url"),
   pipeline: text("pipeline"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -66,6 +68,8 @@ export const activities = pgTable("activities", {
   owner: text("owner"),
   activityDate: text("activity_date"),
   hubspotUrl: text("hubspot_url"),
+  closeId: text("close_id"),
+  closeUrl: text("close_url"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -82,6 +86,8 @@ export const meetings = pgTable("meetings", {
   owner: text("owner"),
   attendees: text("attendees"),
   hubspotUrl: text("hubspot_url"),
+  closeId: text("close_id"),
+  closeUrl: text("close_url"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -125,6 +131,7 @@ export const salesReps = pgTable("sales_reps", {
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   hubspotOwnerId: text("hubspot_owner_id"),
+  closeUserId: text("close_user_id"),
   excluded: boolean("excluded").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

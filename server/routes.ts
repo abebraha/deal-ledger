@@ -3,6 +3,7 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import { syncHubSpot } from "./services/hubspot";
 import { syncFireflies } from "./services/fireflies";
+import { syncClose } from "./services/close";
 import { generateWeeklyEmail, generateBiweeklyScorecard, streamCustomReport } from "./services/ai-reports";
 import { generateReportPDF } from "./services/pdf-report";
 import { startScheduler } from "./services/scheduler";
@@ -143,8 +144,9 @@ export async function registerRoutes(
       const accountId = getAccountId(req);
       const hubspot = await storage.getConnection(accountId, "hubspot");
       const fireflies = await storage.getConnection(accountId, "fireflies");
+      const close = await storage.getConnection(accountId, "close");
       const sanitize = (conn: any) => conn ? { ...conn, config: undefined } : null;
-      res.json({ hubspot: sanitize(hubspot), fireflies: sanitize(fireflies) });
+      res.json({ hubspot: sanitize(hubspot), fireflies: sanitize(fireflies), close: sanitize(close) });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -154,7 +156,7 @@ export async function registerRoutes(
     try {
       const accountId = getAccountId(req);
       const service = req.params.service;
-      if (service !== "hubspot" && service !== "fireflies") {
+      if (service !== "hubspot" && service !== "fireflies" && service !== "close") {
         return res.status(400).json({ error: "Invalid service" });
       }
 
@@ -170,7 +172,7 @@ export async function registerRoutes(
         if (!testRes.ok) {
           return res.status(400).json({ error: `HubSpot API key validation failed (${testRes.status}). Please check your key.` });
         }
-      } else {
+      } else if (service === "fireflies") {
         const testRes = await fetch("https://api.fireflies.ai/graphql", {
           method: "POST",
           headers: {
@@ -185,6 +187,16 @@ export async function registerRoutes(
         const testData = await testRes.json();
         if (testData.errors) {
           return res.status(400).json({ error: `Fireflies API error: ${testData.errors[0]?.message || "Unknown error"}` });
+        }
+      } else if (service === "close") {
+        const testRes = await fetch("https://api.close.com/api/v1/me/", {
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${apiKey.trim()}:`).toString("base64")}`,
+            Accept: "application/json",
+          },
+        });
+        if (!testRes.ok) {
+          return res.status(400).json({ error: `Close CRM API key validation failed (${testRes.status}). Please check your key.` });
         }
       }
 
@@ -238,6 +250,41 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Close Users (for rep mapping) ───
+  app.get("/api/accounts/:accountId/close/users", async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      let apiKey: string | undefined;
+      try {
+        const conn = await storage.getConnection(accountId, "close");
+        if (conn?.config && typeof conn.config === "object" && (conn.config as any).apiKey) {
+          apiKey = (conn.config as any).apiKey;
+        }
+      } catch (e) {}
+      if (!apiKey) {
+        return res.status(400).json({ error: "Close CRM not connected" });
+      }
+      const usersResponse = await fetch("https://api.close.com/api/v1/user/", {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}`,
+          Accept: "application/json",
+        },
+      });
+      if (!usersResponse.ok) {
+        return res.status(usersResponse.status).json({ error: "Failed to fetch Close users" });
+      }
+      const usersData = await usersResponse.json();
+      const users = (usersData.data || []).map((u: any) => ({
+        id: u.id,
+        name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+        email: u.email || null,
+      })).filter((u: any) => u.name.length > 0);
+      res.json(users);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── Sales Reps ───
   app.get("/api/accounts/:accountId/sales-reps", async (req, res) => {
     try {
@@ -271,6 +318,7 @@ export async function registerRoutes(
   const updateRepSchema = z.object({
     name: z.string().min(1).transform(s => s.trim()).optional(),
     hubspotOwnerId: z.string().nullable().optional(),
+    closeUserId: z.string().nullable().optional(),
     excluded: z.boolean().optional(),
   });
 
@@ -341,6 +389,15 @@ export async function registerRoutes(
   app.post("/api/accounts/:accountId/sync/fireflies", async (req, res) => {
     try {
       const result = await syncFireflies(getAccountId(req));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounts/:accountId/sync/close", async (req, res) => {
+    try {
+      const result = await syncClose(getAccountId(req));
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
