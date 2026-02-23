@@ -46,6 +46,7 @@ export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJ
   const doc = new PDFDocument({
     size: "LETTER",
     margins: { top: 50, bottom: 60, left: 55, right: 55 },
+    bufferPages: true,
     info: {
       Title: options.title,
       Author: "DealFlow",
@@ -60,17 +61,26 @@ export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJ
   const pageWidth = RIGHT - LEFT;
   const accent = getAccentColor(options.type);
 
-  let pageNum = 1;
-  renderPageFooter(doc, pageNum, LEFT, RIGHT, pageWidth, accent);
-
-  doc.on("pageAdded", () => {
-    pageNum++;
-    renderPageFooter(doc, pageNum, LEFT, RIGHT, pageWidth, accent);
-  });
-
   renderHeader(doc, options, accent, LEFT, RIGHT, pageWidth);
   renderMarkdownContent(doc, options.content, pageWidth, LEFT, RIGHT, accent);
 
+  const range = doc.bufferedPageRange();
+  const pageCount = range.count;
+  for (let i = 0; i < pageCount; i++) {
+    doc.switchToPage(i);
+    const footerY = doc.page.height - 45;
+    doc.save();
+    doc.moveTo(LEFT, footerY).lineTo(RIGHT, footerY)
+      .strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
+    doc.restore();
+    doc.save();
+    doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light);
+    doc.text("DealFlow", LEFT, footerY + 8, { lineBreak: false, width: 100 });
+    doc.text(`Page ${i + 1} of ${pageCount}`, RIGHT - 100, footerY + 8, { lineBreak: false, width: 100, align: "right" });
+    doc.restore();
+  }
+
+  doc.flushPages();
   doc.end();
 }
 
@@ -109,28 +119,6 @@ function renderHeader(
   doc.moveDown(1.0);
 }
 
-function renderPageFooter(
-  doc: PDFKit.PDFDocument,
-  pageNum: number,
-  LEFT: number,
-  RIGHT: number,
-  pageWidth: number,
-  accent: string,
-) {
-  const savedY = doc.y;
-  const footerY = doc.page.height - 45;
-
-  doc.moveTo(LEFT, footerY).lineTo(RIGHT, footerY)
-    .strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
-
-  doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
-    .text("DealFlow", LEFT, footerY + 8, { lineBreak: false });
-
-  doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
-    .text(`Page ${pageNum}`, LEFT, footerY + 8, { width: pageWidth, align: "right", lineBreak: false });
-
-  doc.y = savedY;
-}
 
 function formatDateNice(dateStr: string): string {
   try {
