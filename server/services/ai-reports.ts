@@ -320,18 +320,21 @@ FORMATTING (VERY IMPORTANT):
 - Use numbered lists (1. item) for rankings or ordered items.
 - Use markdown tables (| col1 | col2 |) for tabular data like metrics comparisons.
 - Use --- for section dividers where appropriate.
-- Match the formatting style and structure of the original report as closely as possible.`;
+- Match the formatting style and structure of the original report as closely as possible.
+- NEVER wrap your output in a code block (no \`\`\`markdown or \`\`\`). Output raw markdown directly.`;
 
 export async function refineReport(currentContent: string, instruction: string) {
-  const prompt = `Here is the current report in markdown format:
+  const cleanContent = currentContent.replace(/^```(?:markdown)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
 
-\`\`\`markdown
-${currentContent}
-\`\`\`
+  const prompt = `Here is the current report:
+
+${cleanContent}
+
+---END OF REPORT---
 
 INSTRUCTION: ${instruction}
 
-Produce the COMPLETE updated report incorporating the requested changes. You MUST return the full report content using the same rich markdown formatting (headers, bold, bullet lists, tables, etc.) as the original. Do NOT return plain text.`;
+Produce the COMPLETE updated report incorporating the requested changes. You MUST return the full report using the same rich markdown formatting (headers, bold, bullet lists, tables, etc.) as the original. Do NOT return plain text. Do NOT wrap the output in a code block — output the markdown directly.`;
 
   return openai.chat.completions.create({
     model: "gpt-4o",

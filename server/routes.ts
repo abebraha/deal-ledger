@@ -534,7 +534,8 @@ export async function registerRoutes(
         }
       }
 
-      res.write(`data: ${JSON.stringify({ done: true, fullContent: fullResponse })}\n\n`);
+      const cleanedResponse = fullResponse.replace(/^```(?:markdown)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      res.write(`data: ${JSON.stringify({ done: true, fullContent: cleanedResponse })}\n\n`);
       res.end();
     } catch (err: any) {
       if (!res.headersSent) {
