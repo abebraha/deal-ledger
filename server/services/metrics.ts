@@ -6,6 +6,7 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
   const allActivities = await storage.getActivities(accountId);
   const allMeetings = await storage.getMeetings(accountId);
   const firefliesMtgs = await storage.getFirefliesMeetings(accountId);
+  const allSettings = await storage.getAllSettings(accountId);
 
   const periodActivities = filterByDateRange(allActivities, 'activityDate', periodStart, periodEnd);
   const periodMeetings = filterByDateRange(allMeetings, 'startTime', periodStart, periodEnd);
@@ -26,29 +27,69 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
       hubspotUrl: d.hubspotUrl,
     }));
 
+  const closedWonDeals = allDeals
+    .filter(d => isClosedWon(d.stage))
+    .map(d => ({
+      name: d.name,
+      company: d.companyName,
+      amount: d.amount,
+      stage: d.stage,
+      closeDate: d.closeDate,
+      owner: d.owner,
+    }));
+
   const configuredReps = await storage.getActiveSalesReps(accountId);
   const repNames = configuredReps.length > 0
     ? configuredReps.map(r => r.name)
     : extractRepNamesFromData(allDeals, allActivities);
 
+  const weeklyOutboundGoal = parseInt(allSettings.weeklyOutboundGoal || "50");
+  const weeklyMeetingsGoal = parseInt(allSettings.weeklyMeetingsGoal || "15");
+  const monthlyRevenueGoal = parseInt(allSettings.hubspotRevenueGoal || allSettings.monthlyRevenueGoal || "100000");
+
+  const goals = {
+    weeklyOutboundGoal,
+    weeklyMeetingsGoal,
+    monthlyRevenueGoal,
+  };
+
   const byRep: Record<string, any> = {};
   for (const rep of repNames) {
     const repDeals = allDeals.filter(d => matchesRep(d.owner, rep));
     const repOpen = repDeals.filter(d => !isClosedWon(d.stage) && !isClosedLost(d.stage));
-    const repWon = repDeals.filter(d => isClosedWon(d.stage));
+    const repAllWon = repDeals.filter(d => isClosedWon(d.stage));
+    const repPeriodWon = periodStart
+      ? repAllWon.filter(d => {
+          const cd = d.closeDate || d.lastActivityDate;
+          if (!cd) return false;
+          return cd >= periodStart && (!periodEnd || cd <= periodEnd);
+        })
+      : repAllWon;
     const repActivities = periodActivities.filter(a => matchesRep(a.owner, rep));
     const repMeetings = periodMeetings.filter(m => matchesRep(m.owner, rep));
+
+    const activityCounts = countByTypeNormalized(repActivities);
 
     byRep[rep] = {
       openDeals: repOpen.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate })),
       totalOpenPipeline: repOpen.reduce((sum, d) => sum + (d.amount || 0), 0),
       weightedPipeline: repOpen.reduce((sum, d) => sum + (d.amount || 0) * (d.probability || 0) / 100, 0),
-      dealsWon: repWon.length,
-      revenueWon: repWon.reduce((sum, d) => sum + (d.amount || 0), 0),
-      totalActivities: repActivities.length,
-      activitiesByType: countByType(repActivities),
+      dealsWonAllTime: repAllWon.length,
+      revenueWonAllTime: repAllWon.reduce((sum, d) => sum + (d.amount || 0), 0),
+      dealsWonThisPeriod: repPeriodWon.length,
+      revenueWonThisPeriod: repPeriodWon.reduce((sum, d) => sum + (d.amount || 0), 0),
+      wonDealsThisPeriod: repPeriodWon.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, closeDate: d.closeDate })),
+      calls: activityCounts["call"] || 0,
+      emails: activityCounts["email"] || 0,
+      linkedinMessages: activityCounts["linkedin_message"] || 0,
+      tasks: activityCounts["task"] || 0,
+      notes: activityCounts["note"] || 0,
+      totalOutbound: (activityCounts["call"] || 0) + (activityCounts["email"] || 0) + (activityCounts["linkedin_message"] || 0),
+      weeklyOutboundGoal,
       meetingsHeld: repMeetings.length,
+      weeklyMeetingsGoal,
       meetings: repMeetings.slice(0, 10).map(m => ({ title: m.title, startTime: m.startTime, outcome: m.outcome })),
+      totalActivities: repActivities.length,
     };
   }
 
@@ -76,8 +117,10 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
   return {
     kpis,
     openDeals,
+    closedWonDeals,
     byRep,
     repNames,
+    goals,
     recentFirefliesMeetings,
     generatedAt: new Date().toISOString(),
     periodStart: periodStart || null,
@@ -104,15 +147,24 @@ function extractRepNamesFromData(deals: any[], activities: any[]): string[] {
 
 function matchesRep(owner: string | null | undefined, rep: string): boolean {
   if (!owner) return false;
-  const lower = owner.toLowerCase().trim();
-  const repLower = rep.toLowerCase();
-  return lower.includes(repLower) || lower === repLower;
+  const ownerNorm = owner.toLowerCase().trim();
+  const repNorm = rep.toLowerCase().trim();
+  if (ownerNorm === repNorm) return true;
+  const ownerParts = ownerNorm.split(/\s+/);
+  const repParts = repNorm.split(/\s+/);
+  if (ownerParts.length >= 2 && repParts.length >= 2) {
+    return ownerParts[0] === repParts[0] && ownerParts[ownerParts.length - 1] === repParts[repParts.length - 1];
+  }
+  if (repParts.length === 1 && ownerParts.length >= 2) {
+    return ownerParts[0] === repParts[0] || ownerParts[ownerParts.length - 1] === repParts[0];
+  }
+  return false;
 }
 
-function countByType(items: any[]): Record<string, number> {
+function countByTypeNormalized(items: any[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const item of items) {
-    const t = item.type || "other";
+    const t = (item.type || "other").toLowerCase();
     counts[t] = (counts[t] || 0) + 1;
   }
   return counts;

@@ -367,33 +367,45 @@ class DatabaseStorage implements IStorage {
 
     const isClosedWon = (s: string) => s.toLowerCase() === "closed won" || s.toLowerCase() === "closedwon";
     const isClosedLost = (s: string) => s.toLowerCase() === "closed lost" || s.toLowerCase() === "closedlost";
-    const closedWon = allDeals.filter(d => isClosedWon(d.stage));
+
+    const allClosedWon = allDeals.filter(d => isClosedWon(d.stage));
     const openDeals = allDeals.filter(d => !isClosedWon(d.stage) && !isClosedLost(d.stage));
-    
-    const totalRevenue = closedWon.reduce((sum, d) => sum + (d.amount || 0), 0);
+
+    const periodClosedWon = startDate
+      ? allClosedWon.filter(d => {
+          const cd = d.closeDate || d.lastActivityDate;
+          if (!cd) return false;
+          return cd >= startDate && (!endDate || cd <= endDate);
+        })
+      : allClosedWon;
+
+    const allTimeRevenue = allClosedWon.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const periodRevenue = periodClosedWon.reduce((sum, d) => sum + (d.amount || 0), 0);
     const pipelineValue = openDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
     const weightedPipeline = openDeals.reduce((sum, d) => sum + (d.amount || 0) * ((d.probability || 0) / 100), 0);
 
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    const weekStartStr = weekStart.toISOString();
+    const activityStart = startDate || (() => {
+      const now = new Date();
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      return weekStart.toISOString();
+    })();
 
-    const thisWeekActivities = allActivities.filter(a => {
+    const periodActivities = allActivities.filter(a => {
       if (!a.activityDate) return false;
-      return a.activityDate >= weekStartStr;
+      return a.activityDate >= activityStart && (!endDate || a.activityDate <= endDate);
     });
 
-    const thisWeekMeetings = allMeetings.filter(m => {
+    const periodMeetings = allMeetings.filter(m => {
       if (!m.startTime) return false;
-      return m.startTime >= weekStartStr;
+      return m.startTime >= activityStart && (!endDate || m.startTime <= endDate);
     });
 
-    const calls = thisWeekActivities.filter(a => a.type === "CALL" || a.type === "call");
-    const emails = thisWeekActivities.filter(a => a.type === "EMAIL" || a.type === "email");
-    const linkedinMessages = thisWeekActivities.filter(a => a.type === "LINKEDIN_MESSAGE" || a.type === "linkedin_message");
-    const meetingsHeld = thisWeekMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
+    const calls = periodActivities.filter(a => a.type?.toLowerCase() === "call");
+    const emails = periodActivities.filter(a => a.type?.toLowerCase() === "email");
+    const linkedinMessages = periodActivities.filter(a => a.type?.toLowerCase() === "linkedin_message");
+    const meetingsHeld = periodMeetings.filter(m => m.outcome === "COMPLETED" || m.outcome === "completed" || !m.outcome);
 
     const monthlyRevenueGoal = parseInt(allSettings.hubspotRevenueGoal || allSettings.monthlyRevenueGoal || "100000");
     const weeklyMeetingsGoal = parseInt(allSettings.weeklyMeetingsGoal || "15");
@@ -401,9 +413,11 @@ class DatabaseStorage implements IStorage {
 
     return {
       revenue: {
-        total: totalRevenue,
+        total: allTimeRevenue,
+        periodRevenue,
+        periodDealsWon: periodClosedWon.length,
         goal: monthlyRevenueGoal,
-        attainment: monthlyRevenueGoal > 0 ? Math.round((totalRevenue / monthlyRevenueGoal) * 100) : 0,
+        attainment: monthlyRevenueGoal > 0 ? Math.round((allTimeRevenue / monthlyRevenueGoal) * 100) : 0,
       },
       pipeline: {
         total: pipelineValue,
@@ -421,7 +435,8 @@ class DatabaseStorage implements IStorage {
       },
       deals: {
         total: allDeals.length,
-        closedWon: closedWon.length,
+        closedWon: allClosedWon.length,
+        periodClosedWon: periodClosedWon.length,
         open: openDeals.length,
       },
     };

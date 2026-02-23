@@ -10,23 +10,28 @@ const openai = new OpenAI({
 const WEEKLY_SYSTEM_PROMPT = `You are writing detailed sales updates for a CEO named Abe. Write like a sharp executive assistant — direct, specific, informative.
 
 RULES:
-- All facts MUST come from the data provided. Never invent numbers or names.
+- All facts MUST come from the data provided. Never invent numbers, names, or activities.
+- If you don't have data for something, say "No data available" — do NOT guess or fabricate.
 - Be specific and detailed. Include who was spoken to, what was discussed, and what comes next.
 - Each point can be 2-4 lines — enough to convey the full picture.
 - Separate each rep's section clearly.
 - Format numbers with commas (e.g., $125,000).
-- Write in a conversational but professional tone — like thorough briefing notes from a trusted assistant.`;
+- Write in a conversational but professional tone — like thorough briefing notes from a trusted assistant.
+- CRITICAL: Activity counts (calls, emails, LinkedIn messages) MUST exactly match the numbers provided in the structured data. Do not round, estimate, or change these numbers.`;
 
 const SCORECARD_SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. You generate clear, data-driven scorecard reports.
 
 RULES:
 - All metrics you cite MUST come from the structured data provided. Never invent numbers.
+- If a metric is not in the data, say "Data not available" — do NOT estimate or fabricate.
 - When referencing a deal, include the deal name and amount.
 - Use clear markdown section headers (## and ###).
 - Be concise but thorough.
 - CRITICAL: Every report MUST have separate sections for each sales rep.
 - Format numbers with commas (e.g., $125,000).
-- Use --- horizontal rules between major sections.`;
+- Use --- horizontal rules between major sections.
+- CRITICAL: Activity counts (calls, emails, LinkedIn messages, total outbound) MUST exactly match the numbers in the provided data. Copy them directly — do not round, estimate, or change them.
+- When comparing to goals, use the exact goal numbers provided.`;
 
 export async function generateWeeklyEmail(accountId: number, selectedMeetingIds?: number[]): Promise<string> {
   const now = new Date();
@@ -66,18 +71,34 @@ export async function generateWeeklyEmail(accountId: number, selectedMeetingIds?
     transcriptSnippet: m.transcript ? m.transcript.substring(0, 6000) : null,
   }));
 
-  const prompt = `Write a detailed weekly sales update for Abe based on the meeting recordings below.
+  const repSummaries = metrics.repNames.map(rep => {
+    const repData = metrics.byRep[rep];
+    if (!repData) return `${rep}: No data available`;
+    return `### ${rep}
+- Calls: ${repData.calls}
+- Emails: ${repData.emails}
+- LinkedIn Messages: ${repData.linkedinMessages}
+- Total Outbound: ${repData.totalOutbound} (goal: ${repData.weeklyOutboundGoal})
+- Meetings Held: ${repData.meetingsHeld} (goal: ${repData.weeklyMeetingsGoal})
+- Open Pipeline: $${(repData.totalOpenPipeline || 0).toLocaleString()} (${repData.openDeals?.length || 0} deals)
+- Weighted Pipeline: $${(repData.weightedPipeline || 0).toLocaleString()}
+- Deals Won This Period: ${repData.dealsWonThisPeriod} ($${(repData.revenueWonThisPeriod || 0).toLocaleString()})
+- Top Open Deals: ${(repData.openDeals || []).slice(0, 5).map((d: any) => `${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — ${d.stage}`).join('; ') || 'None'}`;
+  }).join('\n\n');
+
+  const prompt = `Write a detailed weekly sales update for Abe based on the data below.
+
+STRUCTURED ACTIVITY DATA (these numbers are exact — use them as-is):
+${repSummaries}
 
 SELECTED MEETINGS (${meetingsData.length}):
 ${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings selected."}
-
-Rep names: ${metrics.repNames.join(", ")}
 
 INSTRUCTIONS — follow this format exactly:
 
 Start with one line: "Here's this week's update."
 
-Then for EACH rep, write a section like this:
+Then for EACH rep (${metrics.repNames.join(", ")}), write a section like this:
 
 ## [Rep Name]
 
@@ -93,11 +114,12 @@ Why it matters — one line.
 What happened. One or two lines max.
 What it means or what's next.
 
-End each rep section with an **"Outreach This Week"** summary that includes:
-- Number of calls made and key contacts reached
-- Number of emails sent and notable recipients/topics
-- Number of LinkedIn messages sent and who they targeted
-- Total outreach actions and how it compares to their weekly goal
+End each rep section with an **"Outreach This Week"** summary that EXACTLY matches the structured data above:
+- Calls: [exact number from data]
+- Emails: [exact number from data]
+- LinkedIn Messages: [exact number from data]
+- Total Outbound: [exact number from data] vs goal of [exact goal from data]
+- Meetings: [exact number from data] vs goal of [exact goal from data]
 
 STYLE RULES:
 - Be detailed but scannable. Include specifics — names, amounts, next steps, context.
@@ -150,10 +172,30 @@ export async function generateBiweeklyScorecard(accountId: number, selectedMeeti
     transcriptSnippet: m.transcript ? m.transcript.substring(0, 4000) : null,
   }));
 
+  const repDataSummaries = metrics.repNames.map(rep => {
+    const rd = metrics.byRep[rep];
+    if (!rd) return `${rep}: No data`;
+    return `### ${rep} — EXACT NUMBERS (copy these directly)
+- Open Deals: ${rd.openDeals?.length || 0}, Total Open Pipeline: $${(rd.totalOpenPipeline || 0).toLocaleString()}, Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
+- Deals Won This Period: ${rd.dealsWonThisPeriod}, Revenue Won This Period: $${(rd.revenueWonThisPeriod || 0).toLocaleString()}
+- All-Time Deals Won: ${rd.dealsWonAllTime}, All-Time Revenue Won: $${(rd.revenueWonAllTime || 0).toLocaleString()}
+- Calls: ${rd.calls}, Emails: ${rd.emails}, LinkedIn: ${rd.linkedinMessages}, Total Outbound: ${rd.totalOutbound} (goal: ${rd.weeklyOutboundGoal})
+- Meetings: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
+- Top Open Deals: ${(rd.openDeals || []).slice(0, 5).map((d: any) => `${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — ${d.stage} — close: ${d.closeDate || 'TBD'}`).join('; ') || 'None'}
+- Won Deals This Period: ${(rd.wonDealsThisPeriod || []).map((d: any) => `${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()}`).join('; ') || 'None'}`;
+  }).join('\n\n');
+
   const prompt = `Generate a biweekly CEO scorecard report for Abe.
 
-PIPELINE & ACTIVITY DATA:
-${JSON.stringify(metrics, null, 2)}
+OVERALL KPIs (exact numbers):
+- All-Time Revenue (Closed Won): $${(metrics.kpis.revenue.total || 0).toLocaleString()}
+- Revenue Won This Period: $${(metrics.kpis.revenue.periodRevenue || 0).toLocaleString()} (${metrics.kpis.revenue.periodDealsWon || 0} deals)
+- Monthly Revenue Goal: $${(metrics.goals.monthlyRevenueGoal || 0).toLocaleString()}
+- Open Pipeline: $${(metrics.kpis.pipeline.total || 0).toLocaleString()} (${metrics.kpis.pipeline.dealCount} deals)
+- Weighted Pipeline: $${(metrics.kpis.pipeline.weighted || 0).toLocaleString()}
+
+PER-REP DATA (these are exact — use these numbers directly):
+${repDataSummaries}
 
 SELECTED FIREFLIES MEETINGS (${meetingsData.length} meeting${meetingsData.length !== 1 ? "s" : ""} for context):
 ${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings selected. Use available data for the Notable Activities section."}
@@ -166,7 +208,7 @@ Format as a formal scorecard with markdown formatting:
 Rate as Green/Yellow/Red based on the data, with brief justification
 
 ### Revenue Performance
-- Revenue vs target (if available)
+- Revenue vs target (use exact numbers from above)
 - Pipeline coverage ratio
 - Win rate trends
 
@@ -175,10 +217,10 @@ Rate as Green/Yellow/Red based on the data, with brief justification
 ### Rep Scorecard: [Rep Name]
 (Repeat this section for EACH rep: ${metrics.repNames.join(", ")})
 For each rep include:
-- Pipeline Summary: open deals count, total value, weighted value
-- Activity Dashboard: calls, emails, LinkedIn messages, meetings, tasks
-- Outreach Summary: total outreach actions (calls + emails + LinkedIn messages) vs weekly goal
-- Top Deals: top 3-5 deals by amount with stage and close date
+- Pipeline Summary: open deals count, total value, weighted value — USE EXACT NUMBERS FROM DATA
+- Activity Dashboard: calls, emails, LinkedIn messages, meetings, tasks — USE EXACT NUMBERS FROM DATA
+- Outreach Summary: total outbound vs weekly goal — USE EXACT NUMBERS FROM DATA
+- Top Deals: top 3-5 deals by amount with stage and close date — USE DEAL NAMES FROM DATA
 - Performance Rating: Green/Yellow/Red with brief commentary
 
 ---
@@ -219,7 +261,8 @@ RULES:
 - All facts must come from the original report. Do not invent new data.
 - You may reorganize, rewrite, add emphasis, remove sections, change tone, or restructure based on the instruction.
 - Use clear markdown formatting with headers, tables, bold, and lists as appropriate.
-- Format numbers with commas (e.g., $125,000).`;
+- Format numbers with commas (e.g., $125,000).
+- CRITICAL: Do not change any numbers, metrics, or activity counts unless the instruction explicitly asks you to correct them.`;
 
 export async function refineReport(currentContent: string, instruction: string) {
   const prompt = `Here is the current report:
@@ -249,13 +292,29 @@ export async function streamCustomReport(accountId: number, userPrompt: string) 
   const metrics = await computeMetricsForReport(accountId, twoWeeksAgo.toISOString(), now.toISOString());
   const allDeals = await storage.getDeals(accountId);
 
+  const repDataSummaries = metrics.repNames.map(rep => {
+    const rd = metrics.byRep[rep];
+    if (!rd) return `${rep}: No data`;
+    return `### ${rep}
+- Open Deals: ${rd.openDeals?.length || 0}, Pipeline: $${(rd.totalOpenPipeline || 0).toLocaleString()}, Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
+- Won This Period: ${rd.dealsWonThisPeriod} deals, $${(rd.revenueWonThisPeriod || 0).toLocaleString()}
+- All-Time Won: ${rd.dealsWonAllTime} deals, $${(rd.revenueWonAllTime || 0).toLocaleString()}
+- Calls: ${rd.calls}, Emails: ${rd.emails}, LinkedIn: ${rd.linkedinMessages}, Total Outbound: ${rd.totalOutbound} (goal: ${rd.weeklyOutboundGoal})
+- Meetings: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})`;
+  }).join('\n\n');
+
   const prompt = `User request: "${userPrompt}"
 
-AVAILABLE DATA:
-KPIs: ${JSON.stringify(metrics.kpis, null, 2)}
+AVAILABLE DATA — use these exact numbers:
 
-REP BREAKDOWN:
-${JSON.stringify(metrics.byRep, null, 2)}
+OVERALL KPIs:
+${JSON.stringify(metrics.kpis, null, 2)}
+
+GOALS:
+${JSON.stringify(metrics.goals, null, 2)}
+
+PER-REP DATA (exact numbers):
+${repDataSummaries}
 
 ALL DEALS:
 ${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
@@ -263,7 +322,8 @@ ${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amou
 FIREFLIES MEETING SUMMARIES (for context on what reps have been working on):
 ${JSON.stringify(metrics.recentFirefliesMeetings, null, 2)}
 
-Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.`;
+Generate a report addressing the user's specific request. ALWAYS separate data by rep (${metrics.repNames.join(", ")}). Include evidence from the data with specific deal names, amounts, and references. Use markdown formatting with clear headers. Include notable activities and context from Fireflies meetings where relevant.
+CRITICAL: All numbers must exactly match the data provided above. Do not estimate, round, or invent numbers.`;
 
   return openai.chat.completions.create({
     model: "gpt-4o",
