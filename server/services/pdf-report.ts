@@ -46,7 +46,6 @@ export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJ
   const doc = new PDFDocument({
     size: "LETTER",
     margins: { top: 50, bottom: 60, left: 55, right: 55 },
-    bufferPages: true,
     info: {
       Title: options.title,
       Author: "DealFlow",
@@ -61,14 +60,16 @@ export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJ
   const pageWidth = RIGHT - LEFT;
   const accent = getAccentColor(options.type);
 
+  let pageNum = 1;
+  renderPageFooter(doc, pageNum, LEFT, RIGHT, pageWidth, accent);
+
+  doc.on("pageAdded", () => {
+    pageNum++;
+    renderPageFooter(doc, pageNum, LEFT, RIGHT, pageWidth, accent);
+  });
+
   renderHeader(doc, options, accent, LEFT, RIGHT, pageWidth);
   renderMarkdownContent(doc, options.content, pageWidth, LEFT, RIGHT, accent);
-
-  const pageCount = doc.bufferedPageRange().count;
-  for (let i = 0; i < pageCount; i++) {
-    doc.switchToPage(i);
-    renderFooter(doc, i, pageCount, LEFT, RIGHT, pageWidth, accent);
-  }
 
   doc.end();
 }
@@ -108,15 +109,15 @@ function renderHeader(
   doc.moveDown(1.0);
 }
 
-function renderFooter(
+function renderPageFooter(
   doc: PDFKit.PDFDocument,
-  pageIndex: number,
-  pageCount: number,
+  pageNum: number,
   LEFT: number,
   RIGHT: number,
   pageWidth: number,
   accent: string,
 ) {
+  const savedY = doc.y;
   const footerY = doc.page.height - 45;
 
   doc.moveTo(LEFT, footerY).lineTo(RIGHT, footerY)
@@ -126,7 +127,9 @@ function renderFooter(
     .text("DealFlow", LEFT, footerY + 8, { lineBreak: false });
 
   doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
-    .text(`${pageIndex + 1} / ${pageCount}`, LEFT, footerY + 8, { width: pageWidth, align: "right", lineBreak: false });
+    .text(`Page ${pageNum}`, LEFT, footerY + 8, { width: pageWidth, align: "right", lineBreak: false });
+
+  doc.y = savedY;
 }
 
 function formatDateNice(dateStr: string): string {
