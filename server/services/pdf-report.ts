@@ -9,179 +9,317 @@ interface PDFReportOptions {
   createdAt: string;
 }
 
+const COLORS = {
+  primary: "#1a1a2e",
+  accent: "#2563eb",
+  accentWeekly: "#2563eb",
+  accentBiweekly: "#7c3aed",
+  accentCustom: "#d97706",
+  heading1: "#1a1a2e",
+  heading2: "#1e293b",
+  heading3: "#334155",
+  heading4: "#475569",
+  body: "#374151",
+  muted: "#6b7280",
+  light: "#9ca3af",
+  border: "#e5e7eb",
+  borderLight: "#f3f4f6",
+  bulletPrimary: "#2563eb",
+  bulletSecondary: "#94a3b8",
+  tableBg: "#f8fafc",
+  white: "#ffffff",
+};
+
+function getAccentColor(type: string): string {
+  if (type === "weekly") return COLORS.accentWeekly;
+  if (type === "biweekly") return COLORS.accentBiweekly;
+  return COLORS.accentCustom;
+}
+
+function getReportSubtitle(type: string): string {
+  if (type === "weekly") return "Weekly Pipeline Update";
+  if (type === "biweekly") return "CEO Biweekly Scorecard";
+  return "Custom Report";
+}
+
 export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJS.WritableStream): void {
   const doc = new PDFDocument({
     size: "LETTER",
-    margins: { top: 60, bottom: 60, left: 60, right: 60 },
+    margins: { top: 50, bottom: 60, left: 55, right: 55 },
     bufferPages: true,
+    info: {
+      Title: options.title,
+      Author: "DealFlow",
+      Subject: getReportSubtitle(options.type),
+    },
   });
 
   doc.pipe(outputStream);
 
-  const pageWidth = doc.page.width - 120;
+  const LEFT = 55;
+  const RIGHT = doc.page.width - 55;
+  const pageWidth = RIGHT - LEFT;
+  const accent = getAccentColor(options.type);
 
-  doc.font("Helvetica-Bold").fontSize(22).text("DealFlow", { align: "center" });
-  doc.moveDown(0.3);
-  doc.font("Helvetica").fontSize(10).fillColor("#666666")
-    .text(options.type === "weekly" ? "Weekly Pipeline Update" : options.type === "biweekly" ? "CEO Biweekly Scorecard" : "Custom Report", { align: "center" });
-  doc.moveDown(0.2);
-
-  const dateRange = options.periodStart && options.periodEnd
-    ? `${options.periodStart} — ${options.periodEnd}`
-    : new Date(options.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  doc.fontSize(9).fillColor("#999999").text(dateRange, { align: "center" });
-
-  doc.moveDown(0.6);
-  const lineY = doc.y;
-  doc.moveTo(60, lineY).lineTo(doc.page.width - 60, lineY).strokeColor("#cccccc").lineWidth(1).stroke();
-  doc.moveDown(1);
-
-  doc.fillColor("#000000");
-  renderMarkdownContent(doc, options.content, pageWidth);
+  renderHeader(doc, options, accent, LEFT, RIGHT, pageWidth);
+  renderMarkdownContent(doc, options.content, pageWidth, LEFT, RIGHT, accent);
 
   const pageCount = doc.bufferedPageRange().count;
   for (let i = 0; i < pageCount; i++) {
     doc.switchToPage(i);
-    doc.font("Helvetica").fontSize(8).fillColor("#999999")
-      .text(`Page ${i + 1} of ${pageCount}`, 60, doc.page.height - 40, { align: "center", width: pageWidth });
+    renderFooter(doc, i, pageCount, LEFT, RIGHT, pageWidth, accent);
   }
 
   doc.end();
 }
 
-function renderMarkdownContent(doc: PDFKit.PDFDocument, content: string, pageWidth: number) {
+function renderHeader(
+  doc: PDFKit.PDFDocument,
+  options: PDFReportOptions,
+  accent: string,
+  LEFT: number,
+  RIGHT: number,
+  pageWidth: number,
+) {
+  doc.rect(0, 0, doc.page.width, 4).fill(accent);
+
+  doc.y = 28;
+
+  doc.font("Helvetica-Bold").fontSize(24).fillColor(COLORS.primary)
+    .text(options.title, LEFT, doc.y, { width: pageWidth, align: "left" });
+  doc.moveDown(0.3);
+
+  const subtitle = getReportSubtitle(options.type);
+  doc.font("Helvetica").fontSize(11).fillColor(accent)
+    .text(subtitle.toUpperCase(), LEFT, doc.y, { width: pageWidth, align: "left", characterSpacing: 1.5 });
+  doc.moveDown(0.5);
+
+  const dateRange = options.periodStart && options.periodEnd
+    ? `${formatDateNice(options.periodStart)} — ${formatDateNice(options.periodEnd)}`
+    : formatDateNice(options.createdAt);
+
+  doc.font("Helvetica").fontSize(9).fillColor(COLORS.muted)
+    .text(`Generated ${dateRange}`, LEFT, doc.y, { width: pageWidth, align: "left" });
+  doc.moveDown(0.6);
+
+  const lineY = doc.y;
+  doc.moveTo(LEFT, lineY).lineTo(RIGHT, lineY)
+    .strokeColor(COLORS.border).lineWidth(1).stroke();
+  doc.moveDown(1.0);
+}
+
+function renderFooter(
+  doc: PDFKit.PDFDocument,
+  pageIndex: number,
+  pageCount: number,
+  LEFT: number,
+  RIGHT: number,
+  pageWidth: number,
+  accent: string,
+) {
+  const footerY = doc.page.height - 45;
+
+  doc.moveTo(LEFT, footerY).lineTo(RIGHT, footerY)
+    .strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
+
+  doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
+    .text("DealFlow", LEFT, footerY + 8);
+
+  doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
+    .text(`${pageIndex + 1} / ${pageCount}`, LEFT, footerY + 8, { width: pageWidth, align: "right" });
+}
+
+function formatDateNice(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  } catch {
+    return dateStr;
+  }
+}
+
+function checkPageBreak(doc: PDFKit.PDFDocument, neededHeight: number = 60) {
+  if (doc.y + neededHeight > doc.page.height - 70) {
+    doc.addPage();
+    doc.y = 50;
+  }
+}
+
+function renderMarkdownContent(
+  doc: PDFKit.PDFDocument,
+  content: string,
+  pageWidth: number,
+  LEFT: number,
+  RIGHT: number,
+  accent: string,
+) {
   const lines = content.split("\n");
   let inList = false;
+  let prevWasHeading = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
     if (line.trim() === "") {
       if (inList) {
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
         inList = false;
-      } else {
-        doc.moveDown(0.5);
+      } else if (!prevWasHeading) {
+        doc.moveDown(0.4);
       }
+      prevWasHeading = false;
       continue;
     }
 
     if (line.startsWith("# ")) {
+      checkPageBreak(doc, 50);
+      doc.moveDown(0.6);
+      const headingText = line.replace(/^# /, "").trim();
+      doc.font("Helvetica-Bold").fontSize(18).fillColor(COLORS.heading1)
+        .text(stripMarkdown(headingText), LEFT, doc.y, { width: pageWidth });
+      doc.moveDown(0.25);
+      const uy = doc.y;
+      doc.moveTo(LEFT, uy).lineTo(LEFT + 50, uy)
+        .strokeColor(accent).lineWidth(2.5).stroke();
       doc.moveDown(0.5);
-      doc.font("Helvetica-Bold").fontSize(18).fillColor("#111111")
-        .text(line.replace(/^# /, ""), { width: pageWidth });
-      doc.moveDown(0.3);
-      const underY = doc.y;
-      doc.moveTo(60, underY).lineTo(doc.page.width - 60, underY).strokeColor("#dddddd").lineWidth(0.5).stroke();
-      doc.moveDown(0.4);
+      prevWasHeading = true;
+      inList = false;
       continue;
     }
 
     if (line.startsWith("## ")) {
+      checkPageBreak(doc, 45);
       doc.moveDown(0.5);
-      doc.font("Helvetica-Bold").fontSize(14).fillColor("#222222")
-        .text(line.replace(/^## /, ""), { width: pageWidth });
-      doc.moveDown(0.3);
+      const headingText = line.replace(/^## /, "").trim();
+      doc.font("Helvetica-Bold").fontSize(14).fillColor(COLORS.heading2)
+        .text(stripMarkdown(headingText), LEFT, doc.y, { width: pageWidth });
+      doc.moveDown(0.2);
+      const uy = doc.y;
+      doc.moveTo(LEFT, uy).lineTo(LEFT + 35, uy)
+        .strokeColor(accent).lineWidth(1.5).stroke();
+      doc.moveDown(0.45);
+      prevWasHeading = true;
+      inList = false;
       continue;
     }
 
     if (line.startsWith("### ")) {
+      checkPageBreak(doc, 35);
+      doc.moveDown(0.35);
+      const headingText = line.replace(/^### /, "").trim();
+      doc.font("Helvetica-Bold").fontSize(12).fillColor(COLORS.heading3)
+        .text(stripMarkdown(headingText), LEFT, doc.y, { width: pageWidth });
       doc.moveDown(0.3);
-      doc.font("Helvetica-Bold").fontSize(12).fillColor("#333333")
-        .text(line.replace(/^### /, ""), { width: pageWidth });
-      doc.moveDown(0.2);
+      prevWasHeading = true;
+      inList = false;
       continue;
     }
 
     if (line.startsWith("#### ")) {
+      checkPageBreak(doc, 30);
+      doc.moveDown(0.25);
+      const headingText = line.replace(/^#### /, "").trim();
+      doc.font("Helvetica-Bold").fontSize(10.5).fillColor(COLORS.heading4)
+        .text(stripMarkdown(headingText), LEFT, doc.y, { width: pageWidth });
       doc.moveDown(0.2);
-      doc.font("Helvetica-Bold").fontSize(11).fillColor("#444444")
-        .text(line.replace(/^#### /, ""), { width: pageWidth });
-      doc.moveDown(0.2);
+      prevWasHeading = true;
+      inList = false;
       continue;
     }
 
     if (line.match(/^---+$/)) {
       doc.moveDown(0.3);
       const sepY = doc.y;
-      doc.moveTo(60, sepY).lineTo(doc.page.width - 60, sepY).strokeColor("#dddddd").lineWidth(0.5).stroke();
+      doc.moveTo(LEFT, sepY).lineTo(RIGHT, sepY)
+        .strokeColor(COLORS.border).lineWidth(0.5).stroke();
       doc.moveDown(0.5);
+      prevWasHeading = false;
+      inList = false;
       continue;
     }
 
+    prevWasHeading = false;
+
     if (line.match(/^\s*[-*]\s/)) {
       inList = true;
+      checkPageBreak(doc, 18);
       const indent = line.match(/^(\s*)/)?.[1]?.length ?? 0;
       const indentLevel = Math.floor(indent / 2);
       const bulletText = line.replace(/^\s*[-*]\s/, "").trim();
-      const leftMargin = 60 + indentLevel * 15;
-      const bulletChar = indentLevel === 0 ? "•" : "◦";
+      const leftOffset = indentLevel * 18;
+      const bulletX = LEFT + 6 + leftOffset;
+      const textX = LEFT + 18 + leftOffset;
+      const textW = pageWidth - 18 - leftOffset;
 
-      renderStyledLine(doc, `${bulletChar}  ${bulletText}`, 10, pageWidth - indentLevel * 15, leftMargin);
-      doc.moveDown(0.15);
+      if (indentLevel === 0) {
+        doc.circle(bulletX + 2, doc.y + 5, 2.2).fill(accent);
+      } else {
+        doc.circle(bulletX + 2, doc.y + 5, 1.8).lineWidth(0.8).strokeColor(COLORS.bulletSecondary).stroke();
+      }
+
+      renderRichText(doc, bulletText, 9.5, textW, textX, COLORS.body);
+      doc.moveDown(0.2);
       continue;
     }
 
     if (line.match(/^\s*\d+\.\s/)) {
       inList = true;
+      checkPageBreak(doc, 18);
       const numMatch = line.match(/^\s*(\d+)\.\s(.*)/);
       if (numMatch) {
-        renderStyledLine(doc, `${numMatch[1]}.  ${numMatch[2]}`, 10, pageWidth, 60);
-        doc.moveDown(0.15);
+        const numX = LEFT + 4;
+        const textX = LEFT + 22;
+        const textW = pageWidth - 22;
+
+        doc.font("Helvetica-Bold").fontSize(9.5).fillColor(accent)
+          .text(`${numMatch[1]}.`, numX, doc.y, { continued: false });
+
+        doc.moveUp();
+        renderRichText(doc, numMatch[2].trim(), 9.5, textW, textX, COLORS.body);
+        doc.moveDown(0.2);
       }
       continue;
     }
 
-    if (line.startsWith("**Subject") || line.startsWith("Subject")) {
-      doc.font("Helvetica-Bold").fontSize(12).fillColor("#111111")
-        .text(stripMarkdown(line), { width: pageWidth });
-      doc.moveDown(0.3);
-      continue;
-    }
-
-    renderStyledLine(doc, line.trim(), 10, pageWidth, 60);
-    doc.moveDown(0.15);
+    checkPageBreak(doc, 16);
+    renderRichText(doc, line.trim(), 9.5, pageWidth, LEFT, COLORS.body);
+    doc.moveDown(0.2);
   }
 }
 
-function renderStyledLine(doc: PDFKit.PDFDocument, text: string, fontSize: number, width: number, x: number) {
+function renderRichText(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  fontSize: number,
+  width: number,
+  x: number,
+  color: string,
+) {
   const parts = parseInlineFormatting(text);
-  doc.fontSize(fontSize).fillColor("#333333");
 
-  let currentX = x;
-  const lineHeight = fontSize * 1.4;
+  if (parts.length === 1 && !parts[0].bold) {
+    doc.font("Helvetica").fontSize(fontSize).fillColor(color)
+      .text(parts[0].text, x, doc.y, { width, lineGap: 2 });
+    return;
+  }
+
   const startY = doc.y;
+  let first = true;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const isLast = i === parts.length - 1;
+    const font = part.bold ? "Helvetica-Bold" : "Helvetica";
+    const fc = part.bold ? COLORS.heading2 : color;
 
-  for (const part of parts) {
-    if (part.bold) {
-      doc.font("Helvetica-Bold");
+    doc.font(font).fontSize(fontSize).fillColor(fc);
+
+    if (first) {
+      doc.text(part.text, x, startY, { width, continued: !isLast, lineGap: 2 });
+      first = false;
     } else {
-      doc.font("Helvetica");
+      doc.text(part.text, { width, continued: !isLast, lineGap: 2 });
     }
-
-    const textWidth = doc.widthOfString(part.text);
-
-    if (currentX + textWidth > x + width && currentX > x) {
-      doc.text(part.text, x, undefined, { width, continued: false });
-      return;
-    }
-  }
-
-  doc.font("Helvetica").text("", x, startY, { width });
-
-  let fullText = "";
-  for (const part of parts) {
-    fullText += part.text;
-  }
-  
-  const hasBold = parts.some(p => p.bold);
-  if (hasBold && parts.length <= 3) {
-    for (const part of parts) {
-      doc.font(part.bold ? "Helvetica-Bold" : "Helvetica")
-        .text(part.text, { continued: parts.indexOf(part) < parts.length - 1, width });
-    }
-  } else {
-    doc.font("Helvetica").text(stripMarkdown(fullText), x, undefined, { width });
   }
 }
 
