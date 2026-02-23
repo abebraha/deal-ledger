@@ -123,10 +123,10 @@ function renderFooter(
     .strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
 
   doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
-    .text("DealFlow", LEFT, footerY + 8);
+    .text("DealFlow", LEFT, footerY + 8, { lineBreak: false });
 
   doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light)
-    .text(`${pageIndex + 1} / ${pageCount}`, LEFT, footerY + 8, { width: pageWidth, align: "right" });
+    .text(`${pageIndex + 1} / ${pageCount}`, LEFT, footerY + 8, { width: pageWidth, align: "right", lineBreak: false });
 }
 
 function formatDateNice(dateStr: string): string {
