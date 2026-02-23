@@ -10,8 +10,11 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
   const periodActivities = filterByDateRange(allActivities, 'activityDate', periodStart, periodEnd);
   const periodMeetings = filterByDateRange(allMeetings, 'startTime', periodStart, periodEnd);
 
+  const isClosedWon = (s: string) => s.toLowerCase() === "closed won" || s.toLowerCase() === "closedwon";
+  const isClosedLost = (s: string) => s.toLowerCase() === "closed lost" || s.toLowerCase() === "closedlost";
+
   const openDeals = allDeals
-    .filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost")
+    .filter(d => !isClosedWon(d.stage) && !isClosedLost(d.stage))
     .map(d => ({
       name: d.name,
       company: d.companyName,
@@ -31,8 +34,8 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
   const byRep: Record<string, any> = {};
   for (const rep of repNames) {
     const repDeals = allDeals.filter(d => matchesRep(d.owner, rep));
-    const repOpen = repDeals.filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost");
-    const repWon = repDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
+    const repOpen = repDeals.filter(d => !isClosedWon(d.stage) && !isClosedLost(d.stage));
+    const repWon = repDeals.filter(d => isClosedWon(d.stage));
     const repActivities = periodActivities.filter(a => matchesRep(a.owner, rep));
     const repMeetings = periodMeetings.filter(m => matchesRep(m.owner, rep));
 

@@ -365,8 +365,10 @@ class DatabaseStorage implements IStorage {
     const allMeetings = await this.getMeetings(accountId);
     const allSettings = await this.getAllSettings(accountId);
 
-    const closedWon = allDeals.filter(d => d.stage === "Closed Won" || d.stage === "closedwon");
-    const openDeals = allDeals.filter(d => d.stage !== "Closed Won" && d.stage !== "closedwon" && d.stage !== "Closed Lost" && d.stage !== "closedlost");
+    const isClosedWon = (s: string) => s.toLowerCase() === "closed won" || s.toLowerCase() === "closedwon";
+    const isClosedLost = (s: string) => s.toLowerCase() === "closed lost" || s.toLowerCase() === "closedlost";
+    const closedWon = allDeals.filter(d => isClosedWon(d.stage));
+    const openDeals = allDeals.filter(d => !isClosedWon(d.stage) && !isClosedLost(d.stage));
     
     const totalRevenue = closedWon.reduce((sum, d) => sum + (d.amount || 0), 0);
     const pipelineValue = openDeals.reduce((sum, d) => sum + (d.amount || 0), 0);

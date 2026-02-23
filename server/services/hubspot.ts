@@ -69,10 +69,12 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
       log(`Warning: Could not fetch pipeline stages: ${e}`, "hubspot");
     }
 
+    const companyNameCache: Record<string, string> = {};
+
     let hasMore = true;
     let after: string | undefined;
     while (hasMore) {
-      const url = `https://api.hubapi.com/crm/v3/objects/deals?limit=100&properties=dealname,amount,dealstage,closedate,hubspot_owner_id,hs_lastmodifieddate,pipeline${after ? `&after=${after}` : ""}`;
+      const url = `https://api.hubapi.com/crm/v3/objects/deals?limit=100&associations=companies&properties=dealname,amount,dealstage,closedate,hubspot_owner_id,hs_lastmodifieddate,pipeline,hs_deal_stage_probability${after ? `&after=${after}` : ""}`;
       const dealsResponse = await fetch(url, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
@@ -99,6 +101,29 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
         const rawStage = deal.properties.dealstage || "unknown";
         const stageLabel = stageMap[rawStage] || rawStage;
 
+        let companyName: string | null = null;
+        const companyAssociations = deal.associations?.companies?.results;
+        if (companyAssociations && companyAssociations.length > 0) {
+          const companyId = companyAssociations[0].id;
+          if (companyNameCache[companyId]) {
+            companyName = companyNameCache[companyId];
+          } else {
+            try {
+              const companyResponse = await fetch(`https://api.hubapi.com/crm/v3/objects/companies/${companyId}?properties=name`, {
+                headers: { Authorization: `Bearer ${apiKey}` },
+              });
+              if (companyResponse.ok) {
+                const companyData = await companyResponse.json();
+                companyName = companyData.properties?.name || null;
+                if (companyName) companyNameCache[companyId] = companyName;
+              }
+            } catch (e) {
+            }
+          }
+        }
+
+        const probability = parseFloat(deal.properties.hs_deal_stage_probability) || 0;
+
         await storage.upsertDeal({
           accountId,
           hubspotId: deal.id,
@@ -108,6 +133,8 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
           owner: resolvedOwner || null,
           closeDate: deal.properties.closedate || null,
           lastActivityDate: deal.properties.hs_lastmodifieddate || null,
+          probability,
+          companyName,
           pipeline: deal.properties.pipeline || null,
           hubspotUrl: `https://app.hubspot.com/contacts/deals/${deal.id}`,
         });
@@ -135,6 +162,13 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
             for (const eng of engData.results || []) {
               const engOwnerId = eng.properties.hubspot_owner_id || null;
               const ownerName = engOwnerId ? ownerMap[engOwnerId] : null;
+
+              if (mappedOwnerIds.length > 0) {
+                if (!engOwnerId || !mappedOwnerIds.includes(engOwnerId)) continue;
+              } else if (!isRepOwnerByName(ownerName, repNames)) {
+                continue;
+              }
+
               const resolvedEngOwner = (engOwnerId && ownerIdToRepName[engOwnerId]) ? ownerIdToRepName[engOwnerId] : ownerName;
 
               const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
@@ -223,6 +257,13 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
           for (const mtg of meetingsData.results || []) {
             const mtgOwnerId = mtg.properties.hubspot_owner_id || null;
             const ownerName = mtgOwnerId ? ownerMap[mtgOwnerId] : null;
+
+            if (mappedOwnerIds.length > 0) {
+              if (!mtgOwnerId || !mappedOwnerIds.includes(mtgOwnerId)) continue;
+            } else if (!isRepOwnerByName(ownerName, repNames)) {
+              continue;
+            }
+
             const resolvedMtgOwner = (mtgOwnerId && ownerIdToRepName[mtgOwnerId]) ? ownerIdToRepName[mtgOwnerId] : ownerName;
 
             await storage.upsertMeeting({
