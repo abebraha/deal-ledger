@@ -306,23 +306,32 @@ const REFINE_SYSTEM_PROMPT = `You are a report editor for a CEO named Abe. You r
 
 RULES:
 - Return the COMPLETE updated report, not just the changed parts.
-- Preserve the original structure and formatting unless the instruction says to change it.
+- Preserve the original markdown structure and formatting unless the instruction says to change it.
 - All facts must come from the original report. Do not invent new data.
 - You may reorganize, rewrite, add emphasis, remove sections, change tone, or restructure based on the instruction.
-- Use clear markdown formatting with headers, tables, bold, and lists as appropriate.
 - Format numbers with commas (e.g., $125,000).
-- CRITICAL: Do not change any numbers, metrics, or activity counts unless the instruction explicitly asks you to correct them.`;
+- CRITICAL: Do not change any numbers, metrics, or activity counts unless the instruction explicitly asks you to correct them.
+
+FORMATTING (VERY IMPORTANT):
+- You MUST use rich markdown formatting throughout. Never return plain text.
+- Use # for main title, ## for major sections, ### for subsections, #### for sub-subsections.
+- Use **bold** for key metrics, names, and emphasis.
+- Use bullet lists (- item) for listing activities, deals, and details.
+- Use numbered lists (1. item) for rankings or ordered items.
+- Use markdown tables (| col1 | col2 |) for tabular data like metrics comparisons.
+- Use --- for section dividers where appropriate.
+- Match the formatting style and structure of the original report as closely as possible.`;
 
 export async function refineReport(currentContent: string, instruction: string) {
-  const prompt = `Here is the current report:
+  const prompt = `Here is the current report in markdown format:
 
----
+\`\`\`markdown
 ${currentContent}
----
+\`\`\`
 
 INSTRUCTION: ${instruction}
 
-Please produce the complete updated report incorporating the requested changes. Return the full report content in markdown.`;
+Produce the COMPLETE updated report incorporating the requested changes. You MUST return the full report content using the same rich markdown formatting (headers, bold, bullet lists, tables, etc.) as the original. Do NOT return plain text.`;
 
   return openai.chat.completions.create({
     model: "gpt-4o",
@@ -330,7 +339,7 @@ Please produce the complete updated report incorporating the requested changes. 
       { role: "system", content: REFINE_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream: true,
   });
 }
