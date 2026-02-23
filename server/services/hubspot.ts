@@ -17,7 +17,37 @@ async function getActiveRepConfig(accountId: number): Promise<{ hubspotOwnerIds:
 function isRepOwnerByName(ownerName: string | null | undefined, repNames: string[]): boolean {
   if (!ownerName || repNames.length === 0) return false;
   const lower = ownerName.toLowerCase().trim();
-  return repNames.some(rep => lower.includes(rep));
+  return repNames.some(rep => {
+    if (lower === rep) return true;
+    const ownerParts = lower.split(/\s+/);
+    const repParts = rep.split(/\s+/);
+    if (ownerParts.length >= 2 && repParts.length >= 2) {
+      return ownerParts[0] === repParts[0] && ownerParts[ownerParts.length - 1] === repParts[repParts.length - 1];
+    }
+    if (repParts.length === 1 && ownerParts.length >= 2) {
+      return ownerParts[0] === repParts[0] || ownerParts[ownerParts.length - 1] === repParts[0];
+    }
+    return false;
+  });
+}
+
+async function fetchContactInfo(contactId: string, apiKey: string, contactCache: Record<string, { name: string; company: string | null }>): Promise<{ name: string; company: string | null }> {
+  if (contactCache[contactId]) return contactCache[contactId];
+  try {
+    const resp = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,company`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const first = data.properties?.firstname || "";
+      const last = data.properties?.lastname || "";
+      const name = `${first} ${last}`.trim() || "Unknown Contact";
+      const company = data.properties?.company || null;
+      contactCache[contactId] = { name, company };
+      return { name, company };
+    }
+  } catch (e) {}
+  return { name: "Unknown Contact", company: null };
 }
 
 export async function syncHubSpot(accountId: number): Promise<{ success: boolean; recordsProcessed: number; error?: string }> {
@@ -70,11 +100,13 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
     }
 
     const companyNameCache: Record<string, string> = {};
+    const contactCache: Record<string, { name: string; company: string | null }> = {};
 
+    // ─── Sync Deals ───
     let hasMore = true;
     let after: string | undefined;
     while (hasMore) {
-      const url = `https://api.hubapi.com/crm/v3/objects/deals?limit=100&associations=companies&properties=dealname,amount,dealstage,closedate,hubspot_owner_id,hs_lastmodifieddate,pipeline,hs_deal_stage_probability${after ? `&after=${after}` : ""}`;
+      const url = `https://api.hubapi.com/crm/v3/objects/deals?limit=100&associations=companies,contacts&properties=dealname,amount,dealstage,closedate,hubspot_owner_id,hs_lastmodifieddate,pipeline,hs_deal_stage_probability,createdate,description,notes_last_updated,num_associated_contacts${after ? `&after=${after}` : ""}`;
       const dealsResponse = await fetch(url, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
@@ -148,12 +180,13 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
       }
     }
 
+    // ─── Sync Activities (calls, emails, notes, tasks) with contact associations ───
     try {
       for (const engType of ["calls", "emails", "notes", "tasks"]) {
         let engHasMore = true;
         let engAfter: string | undefined;
         while (engHasMore) {
-          const engUrl = `https://api.hubapi.com/crm/v3/objects/${engType}?limit=100&properties=hs_timestamp,hs_call_title,hs_email_subject,hs_note_body,hs_task_subject,hubspot_owner_id${engAfter ? `&after=${engAfter}` : ""}`;
+          const engUrl = `https://api.hubapi.com/crm/v3/objects/${engType}?limit=100&associations=contacts&properties=hs_timestamp,hs_call_title,hs_email_subject,hs_note_body,hs_task_subject,hubspot_owner_id,hs_body_preview${engAfter ? `&after=${engAfter}` : ""}`;
           const engResponse = await fetch(engUrl, {
             headers: { Authorization: `Bearer ${apiKey}` },
           });
@@ -172,8 +205,18 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
               const resolvedEngOwner = (engOwnerId && ownerIdToRepName[engOwnerId]) ? ownerIdToRepName[engOwnerId] : ownerName;
 
               const subject = eng.properties.hs_call_title || eng.properties.hs_email_subject || eng.properties.hs_task_subject || engType;
-              const body = eng.properties.hs_note_body || "";
+              const body = eng.properties.hs_note_body || eng.properties.hs_body_preview || "";
               const activityType = engType.toUpperCase().replace(/S$/, "");
+
+              let contactName: string | null = null;
+              let contactCompany: string | null = null;
+              const contactAssocs = eng.associations?.contacts?.results;
+              if (contactAssocs && contactAssocs.length > 0) {
+                const info = await fetchContactInfo(contactAssocs[0].id, apiKey, contactCache);
+                contactName = info.name;
+                contactCompany = info.company;
+              }
+
               await storage.upsertActivity({
                 accountId,
                 hubspotId: eng.id,
@@ -181,6 +224,8 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
                 subject: subject,
                 body: body,
                 owner: resolvedEngOwner || null,
+                contactName,
+                companyName: contactCompany,
                 activityDate: eng.properties.hs_timestamp || eng.createdAt,
                 hubspotUrl: `https://app.hubspot.com/contacts/activity/${eng.id}`,
               });
@@ -200,11 +245,12 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
       log(`Warning: Could not sync activities: ${e}`, "hubspot");
     }
 
+    // ─── Sync LinkedIn Messages ───
     try {
       let commHasMore = true;
       let commAfter: string | undefined;
       while (commHasMore) {
-        const commUrl = `https://api.hubapi.com/crm/v3/objects/communications?limit=100&properties=hs_communication_channel_type,hs_communication_body,hs_timestamp,hubspot_owner_id${commAfter ? `&after=${commAfter}` : ""}`;
+        const commUrl = `https://api.hubapi.com/crm/v3/objects/communications?limit=100&associations=contacts&properties=hs_communication_channel_type,hs_communication_body,hs_timestamp,hubspot_owner_id${commAfter ? `&after=${commAfter}` : ""}`;
         const commResponse = await fetch(commUrl, {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
@@ -219,13 +265,24 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
             const ownerName = commOwnerId ? ownerMap[commOwnerId] : null;
             const resolvedCommOwner = (commOwnerId && ownerIdToRepName[commOwnerId]) ? ownerIdToRepName[commOwnerId] : ownerName;
 
+            let contactName: string | null = null;
+            let contactCompany: string | null = null;
+            const contactAssocs = comm.associations?.contacts?.results;
+            if (contactAssocs && contactAssocs.length > 0) {
+              const info = await fetchContactInfo(contactAssocs[0].id, apiKey, contactCache);
+              contactName = info.name;
+              contactCompany = info.company;
+            }
+
             await storage.upsertActivity({
               accountId,
               hubspotId: `comm_${comm.id}`,
               type: "LINKEDIN_MESSAGE",
-              subject: "LinkedIn Message",
+              subject: contactName ? `LinkedIn Message to ${contactName}` : "LinkedIn Message",
               body: comm.properties.hs_communication_body || "",
               owner: resolvedCommOwner || null,
+              contactName,
+              companyName: contactCompany,
               activityDate: comm.properties.hs_timestamp || comm.createdAt,
               hubspotUrl: `https://app.hubspot.com/contacts/communications/${comm.id}`,
             });
@@ -244,11 +301,12 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
       log(`Warning: Could not sync communications: ${e}`, "hubspot");
     }
 
+    // ─── Sync Meetings with contact/company associations ───
     try {
       let mtgHasMore = true;
       let mtgAfter: string | undefined;
       while (mtgHasMore) {
-        const mtgUrl = `https://api.hubapi.com/crm/v3/objects/meetings?limit=100&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id${mtgAfter ? `&after=${mtgAfter}` : ""}`;
+        const mtgUrl = `https://api.hubapi.com/crm/v3/objects/meetings?limit=100&associations=contacts,companies&properties=hs_meeting_title,hs_meeting_start_time,hs_meeting_end_time,hs_meeting_outcome,hubspot_owner_id,hs_internal_meeting_notes,hs_meeting_body${mtgAfter ? `&after=${mtgAfter}` : ""}`;
         const meetingsResponse = await fetch(mtgUrl, {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
@@ -266,6 +324,43 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
 
             const resolvedMtgOwner = (mtgOwnerId && ownerIdToRepName[mtgOwnerId]) ? ownerIdToRepName[mtgOwnerId] : ownerName;
 
+            // Fetch associated contacts for meeting attendees
+            const attendeeNames: string[] = [];
+            let meetingContactName: string | null = null;
+            let meetingCompanyName: string | null = null;
+
+            const contactAssocs = mtg.associations?.contacts?.results;
+            if (contactAssocs && contactAssocs.length > 0) {
+              for (const ca of contactAssocs.slice(0, 10)) {
+                const info = await fetchContactInfo(ca.id, apiKey, contactCache);
+                attendeeNames.push(info.name + (info.company ? ` (${info.company})` : ""));
+                if (!meetingContactName) meetingContactName = info.name;
+                if (!meetingCompanyName && info.company) meetingCompanyName = info.company;
+              }
+            }
+
+            // Also check company associations directly
+            if (!meetingCompanyName) {
+              const companyAssocs = mtg.associations?.companies?.results;
+              if (companyAssocs && companyAssocs.length > 0) {
+                const companyId = companyAssocs[0].id;
+                if (companyNameCache[companyId]) {
+                  meetingCompanyName = companyNameCache[companyId];
+                } else {
+                  try {
+                    const compResp = await fetch(`https://api.hubapi.com/crm/v3/objects/companies/${companyId}?properties=name`, {
+                      headers: { Authorization: `Bearer ${apiKey}` },
+                    });
+                    if (compResp.ok) {
+                      const compData = await compResp.json();
+                      meetingCompanyName = compData.properties?.name || null;
+                      if (meetingCompanyName) companyNameCache[companyId] = meetingCompanyName;
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+
             await storage.upsertMeeting({
               accountId,
               hubspotId: mtg.id,
@@ -274,6 +369,9 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
               endTime: mtg.properties.hs_meeting_end_time || null,
               outcome: mtg.properties.hs_meeting_outcome || null,
               owner: resolvedMtgOwner || null,
+              attendees: attendeeNames.length > 0 ? attendeeNames.join(", ") : null,
+              contactName: meetingContactName,
+              companyName: meetingCompanyName,
               hubspotUrl: `https://app.hubspot.com/contacts/meetings/${mtg.id}`,
             });
             recordsProcessed++;
@@ -291,6 +389,7 @@ export async function syncHubSpot(accountId: number): Promise<{ success: boolean
       log(`Warning: Could not sync meetings: ${e}`, "hubspot");
     }
 
+    // ─── Sync Revenue Goals ───
     try {
       const goalsResponse = await fetch("https://api.hubapi.com/crm/v3/objects/goal_targets?limit=100&properties=hs_goal_name,hs_target_amount,hs_start_datetime,hs_end_datetime", {
         headers: { Authorization: `Bearer ${apiKey}` },

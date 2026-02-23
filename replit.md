@@ -87,6 +87,10 @@ client/src/
 - 2026-02-18: Weekly report redesigned as "Meeting Recap"; biweekly scorecard remains full pipeline/metrics report
 - 2026-02-18: Fireflies meetings stored with full summaries, outlines, keywords, transcript snippets
 - 2026-02-18: Revenue goal synced from HubSpot goal_targets API
+- 2026-02-23: HubSpot sync now fetches contact names and companies for all activities (calls, emails, LinkedIn messages) and meetings; meetings include full attendee details; activity/meeting data passed to AI reports with contact/company detail
+- 2026-02-23: Reports now include per-rep breakdowns with: call details (who was called), email details (who was emailed), LinkedIn message details, meeting details (contact name, company, attendees), full deal listings with all fields
+- 2026-02-23: Period-filtered metrics — won deals, revenue, and activities now correctly scoped to reporting period (not all-time)
+- 2026-02-23: Rep matching fixed — exact name match instead of substring; activity types normalized
 - 2026-02-18: PDF report generation (pdfkit), per-rep metrics breakdown
 - 2026-02-18: Connection flow with API key validation, sync timestamp tracking
 - 2026-02-17: Initial full build

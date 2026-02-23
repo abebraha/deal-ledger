@@ -72,18 +72,43 @@ export async function generateWeeklyEmail(accountId: number, selectedMeetingIds?
   }));
 
   const repSummaries = metrics.repNames.map(rep => {
-    const repData = metrics.byRep[rep];
-    if (!repData) return `${rep}: No data available`;
+    const rd = metrics.byRep[rep];
+    if (!rd) return `${rep}: No data available`;
+
+    const formatDetails = (items: any[]) => items.length > 0
+      ? items.map((d: any) => `  - ${d.contactName || 'Unknown'} ${d.companyName ? `(${d.companyName})` : ''} — ${d.subject || ''} — ${d.date || ''}`).join('\n')
+      : '  (none)';
+
+    const formatMeetings = (items: any[]) => items.length > 0
+      ? items.map((m: any) => `  - "${m.title}" with ${m.contactName || 'Unknown'}${m.companyName ? ` (${m.companyName})` : ''}${m.attendees ? ` [attendees: ${m.attendees}]` : ''} — ${m.startTime || ''} — outcome: ${m.outcome || 'N/A'}`).join('\n')
+      : '  (none)';
+
     return `### ${rep}
-- Calls: ${repData.calls}
-- Emails: ${repData.emails}
-- LinkedIn Messages: ${repData.linkedinMessages}
-- Total Outbound: ${repData.totalOutbound} (goal: ${repData.weeklyOutboundGoal})
-- Meetings Held: ${repData.meetingsHeld} (goal: ${repData.weeklyMeetingsGoal})
-- Open Pipeline: $${(repData.totalOpenPipeline || 0).toLocaleString()} (${repData.openDeals?.length || 0} deals)
-- Weighted Pipeline: $${(repData.weightedPipeline || 0).toLocaleString()}
-- Deals Won This Period: ${repData.dealsWonThisPeriod} ($${(repData.revenueWonThisPeriod || 0).toLocaleString()})
-- Top Open Deals: ${(repData.openDeals || []).slice(0, 5).map((d: any) => `${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — ${d.stage}`).join('; ') || 'None'}`;
+
+**Activity Counts:**
+- Calls: ${rd.calls}
+- Emails: ${rd.emails}
+- LinkedIn Messages: ${rd.linkedinMessages}
+- Total Outbound: ${rd.totalOutbound} (goal: ${rd.weeklyOutboundGoal})
+- Meetings Booked: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
+
+**Call Details:**
+${formatDetails(rd.callDetails || [])}
+
+**Email Details:**
+${formatDetails(rd.emailDetails || [])}
+
+**LinkedIn Message Details:**
+${formatDetails(rd.linkedinDetails || [])}
+
+**Meeting Details (with contacts and companies):**
+${formatMeetings(rd.meetingDetails || [])}
+
+**Open Deals:**
+${(rd.openDeals || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — Stage: ${d.stage} — Probability: ${d.probability || 0}% — Close: ${d.closeDate || 'TBD'}`).join('\n') || '  (none)'}
+
+**Pipeline:** $${(rd.totalOpenPipeline || 0).toLocaleString()} (${rd.openDeals?.length || 0} deals) | Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
+**Deals Won This Period:** ${rd.dealsWonThisPeriod} ($${(rd.revenueWonThisPeriod || 0).toLocaleString()})`;
   }).join('\n\n');
 
   const prompt = `Write a detailed weekly sales update for Abe based on the data below.
@@ -172,17 +197,42 @@ export async function generateBiweeklyScorecard(accountId: number, selectedMeeti
     transcriptSnippet: m.transcript ? m.transcript.substring(0, 4000) : null,
   }));
 
+  const formatActivityDetails = (items: any[]) => items.length > 0
+    ? items.map((d: any) => `  - ${d.contactName || 'Unknown'} ${d.companyName ? `(${d.companyName})` : ''} — ${d.subject || ''} — ${d.date || ''}`).join('\n')
+    : '  (none this period)';
+
+  const formatMeetingDetails = (items: any[]) => items.length > 0
+    ? items.map((m: any) => `  - "${m.title}" with ${m.contactName || 'Unknown'}${m.companyName ? ` (${m.companyName})` : ''}${m.attendees ? ` [attendees: ${m.attendees}]` : ''} — ${m.startTime || ''} — outcome: ${m.outcome || 'N/A'}`).join('\n')
+    : '  (none this period)';
+
   const repDataSummaries = metrics.repNames.map(rep => {
     const rd = metrics.byRep[rep];
     if (!rd) return `${rep}: No data`;
     return `### ${rep} — EXACT NUMBERS (copy these directly)
-- Open Deals: ${rd.openDeals?.length || 0}, Total Open Pipeline: $${(rd.totalOpenPipeline || 0).toLocaleString()}, Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
-- Deals Won This Period: ${rd.dealsWonThisPeriod}, Revenue Won This Period: $${(rd.revenueWonThisPeriod || 0).toLocaleString()}
-- All-Time Deals Won: ${rd.dealsWonAllTime}, All-Time Revenue Won: $${(rd.revenueWonAllTime || 0).toLocaleString()}
+
+**Counts:**
 - Calls: ${rd.calls}, Emails: ${rd.emails}, LinkedIn: ${rd.linkedinMessages}, Total Outbound: ${rd.totalOutbound} (goal: ${rd.weeklyOutboundGoal})
-- Meetings: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
-- Top Open Deals: ${(rd.openDeals || []).slice(0, 5).map((d: any) => `${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — ${d.stage} — close: ${d.closeDate || 'TBD'}`).join('; ') || 'None'}
-- Won Deals This Period: ${(rd.wonDealsThisPeriod || []).map((d: any) => `${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()}`).join('; ') || 'None'}`;
+- Meetings Booked: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
+
+**Call Details:**
+${formatActivityDetails(rd.callDetails || [])}
+
+**Email Details:**
+${formatActivityDetails(rd.emailDetails || [])}
+
+**LinkedIn Details:**
+${formatActivityDetails(rd.linkedinDetails || [])}
+
+**Meeting Details (contacts & companies):**
+${formatMeetingDetails(rd.meetingDetails || [])}
+
+**All Open Deals:**
+${(rd.openDeals || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — Stage: ${d.stage} — Prob: ${d.probability || 0}% — Close: ${d.closeDate || 'TBD'}`).join('\n') || '  (none)'}
+
+**Pipeline:** $${(rd.totalOpenPipeline || 0).toLocaleString()} (${rd.openDeals?.length || 0} deals) | Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
+**Deals Won This Period:** ${rd.dealsWonThisPeriod} ($${(rd.revenueWonThisPeriod || 0).toLocaleString()})
+${(rd.wonDealsThisPeriod || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()}`).join('\n') || ''}
+**All-Time Won:** ${rd.dealsWonAllTime} deals, $${(rd.revenueWonAllTime || 0).toLocaleString()}`;
   }).join('\n\n');
 
   const prompt = `Generate a biweekly CEO scorecard report for Abe.
@@ -194,7 +244,7 @@ OVERALL KPIs (exact numbers):
 - Open Pipeline: $${(metrics.kpis.pipeline.total || 0).toLocaleString()} (${metrics.kpis.pipeline.dealCount} deals)
 - Weighted Pipeline: $${(metrics.kpis.pipeline.weighted || 0).toLocaleString()}
 
-PER-REP DATA (these are exact — use these numbers directly):
+PER-REP DATA (these are exact — use these numbers directly, including contact/company details):
 ${repDataSummaries}
 
 SELECTED FIREFLIES MEETINGS (${meetingsData.length} meeting${meetingsData.length !== 1 ? "s" : ""} for context):
@@ -210,27 +260,26 @@ Rate as Green/Yellow/Red based on the data, with brief justification
 ### Revenue Performance
 - Revenue vs target (use exact numbers from above)
 - Pipeline coverage ratio
-- Win rate trends
 
 ---
 
 ### Rep Scorecard: [Rep Name]
 (Repeat this section for EACH rep: ${metrics.repNames.join(", ")})
 For each rep include:
-- Pipeline Summary: open deals count, total value, weighted value — USE EXACT NUMBERS FROM DATA
-- Activity Dashboard: calls, emails, LinkedIn messages, meetings, tasks — USE EXACT NUMBERS FROM DATA
-- Outreach Summary: total outbound vs weekly goal — USE EXACT NUMBERS FROM DATA
-- Top Deals: top 3-5 deals by amount with stage and close date — USE DEAL NAMES FROM DATA
+- Pipeline Summary: open deals count, total value, weighted value — USE EXACT NUMBERS
+- Activity Dashboard: calls (with who), emails (with who), LinkedIn messages (with who), meetings (with who at which company) — USE EXACT NUMBERS AND CONTACT DETAILS
+- Outreach Summary: total outbound vs weekly goal — USE EXACT NUMBERS
+- All Deals: list ALL deals with company, amount, stage, probability, close date — USE DEAL DATA EXACTLY
+- Meetings Detail: list each meeting with contact name, company, date, outcome
 - Performance Rating: Green/Yellow/Red with brief commentary
 
 ---
 
 ### Notable Activities & Context This Period
-For EACH rep, extract from Fireflies meeting transcripts and summaries:
-- Key non-deal activities (demos, presentations, internal projects, training)
-- Collaboration highlights (working with team members on specific projects)
-- Customer-facing activities that provide context for performance
-- Anything else notable that helps explain performance levels
+For EACH rep, reference specific contacts and companies from the activity data:
+- Key meetings and who they were with
+- Notable outreach patterns
+- Context for performance from Fireflies transcripts if available
 
 ---
 
@@ -292,15 +341,31 @@ export async function streamCustomReport(accountId: number, userPrompt: string) 
   const metrics = await computeMetricsForReport(accountId, twoWeeksAgo.toISOString(), now.toISOString());
   const allDeals = await storage.getDeals(accountId);
 
+  const formatAD = (items: any[]) => items.length > 0
+    ? items.map((d: any) => `  - ${d.contactName || 'Unknown'} ${d.companyName ? `(${d.companyName})` : ''} — ${d.subject || ''} — ${d.date || ''}`).join('\n')
+    : '  (none)';
+  const formatMD = (items: any[]) => items.length > 0
+    ? items.map((m: any) => `  - "${m.title}" with ${m.contactName || 'Unknown'}${m.companyName ? ` (${m.companyName})` : ''}${m.attendees ? ` [${m.attendees}]` : ''} — ${m.startTime || ''}`).join('\n')
+    : '  (none)';
+
   const repDataSummaries = metrics.repNames.map(rep => {
     const rd = metrics.byRep[rep];
     if (!rd) return `${rep}: No data`;
     return `### ${rep}
-- Open Deals: ${rd.openDeals?.length || 0}, Pipeline: $${(rd.totalOpenPipeline || 0).toLocaleString()}, Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
-- Won This Period: ${rd.dealsWonThisPeriod} deals, $${(rd.revenueWonThisPeriod || 0).toLocaleString()}
-- All-Time Won: ${rd.dealsWonAllTime} deals, $${(rd.revenueWonAllTime || 0).toLocaleString()}
 - Calls: ${rd.calls}, Emails: ${rd.emails}, LinkedIn: ${rd.linkedinMessages}, Total Outbound: ${rd.totalOutbound} (goal: ${rd.weeklyOutboundGoal})
-- Meetings: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})`;
+- Meetings: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
+- Pipeline: $${(rd.totalOpenPipeline || 0).toLocaleString()} | Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
+- Won This Period: ${rd.dealsWonThisPeriod} deals, $${(rd.revenueWonThisPeriod || 0).toLocaleString()}
+Call Details:
+${formatAD(rd.callDetails || [])}
+Email Details:
+${formatAD(rd.emailDetails || [])}
+LinkedIn Details:
+${formatAD(rd.linkedinDetails || [])}
+Meeting Details:
+${formatMD(rd.meetingDetails || [])}
+Open Deals:
+${(rd.openDeals || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — ${d.stage} — ${d.probability || 0}% — Close: ${d.closeDate || 'TBD'}`).join('\n') || '  (none)'}`;
   }).join('\n\n');
 
   const prompt = `User request: "${userPrompt}"
@@ -313,11 +378,11 @@ ${JSON.stringify(metrics.kpis, null, 2)}
 GOALS:
 ${JSON.stringify(metrics.goals, null, 2)}
 
-PER-REP DATA (exact numbers):
+PER-REP DATA (exact numbers, with contact/company details):
 ${repDataSummaries}
 
 ALL DEALS:
-${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, hubspotUrl: d.hubspotUrl })), null, 2)}
+${JSON.stringify(allDeals.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate, owner: d.owner, pipeline: d.pipeline, hubspotUrl: d.hubspotUrl })), null, 2)}
 
 FIREFLIES MEETING SUMMARIES (for context on what reps have been working on):
 ${JSON.stringify(metrics.recentFirefliesMeetings, null, 2)}
