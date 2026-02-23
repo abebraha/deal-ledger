@@ -46,7 +46,6 @@ export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJ
   const doc = new PDFDocument({
     size: "LETTER",
     margins: { top: 50, bottom: 60, left: 55, right: 55 },
-    bufferPages: true,
     info: {
       Title: options.title,
       Author: "DealFlow",
@@ -61,26 +60,31 @@ export function generateReportPDF(options: PDFReportOptions, outputStream: NodeJ
   const pageWidth = RIGHT - LEFT;
   const accent = getAccentColor(options.type);
 
-  renderHeader(doc, options, accent, LEFT, RIGHT, pageWidth);
-  renderMarkdownContent(doc, options.content, pageWidth, LEFT, RIGHT, accent);
+  let pageNum = 0;
+  let renderingFooter = false;
 
-  const range = doc.bufferedPageRange();
-  const pageCount = range.count;
-  for (let i = 0; i < pageCount; i++) {
-    doc.switchToPage(i);
+  const addFooter = () => {
+    if (renderingFooter) return;
+    renderingFooter = true;
+    pageNum++;
     const footerY = doc.page.height - 45;
+    const savedY = doc.y;
+    const savedX = doc.x;
     doc.save();
     doc.moveTo(LEFT, footerY).lineTo(RIGHT, footerY)
       .strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
     doc.restore();
-    doc.save();
-    doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.light);
-    doc.text("DealFlow", LEFT, footerY + 8, { lineBreak: false, width: 100 });
-    doc.text(`Page ${i + 1} of ${pageCount}`, RIGHT - 100, footerY + 8, { lineBreak: false, width: 100, align: "right" });
-    doc.restore();
-  }
+    doc.y = savedY;
+    doc.x = savedX;
+    renderingFooter = false;
+  };
 
-  doc.flushPages();
+  addFooter();
+  doc.on("pageAdded", addFooter);
+
+  renderHeader(doc, options, accent, LEFT, RIGHT, pageWidth);
+  renderMarkdownContent(doc, options.content, pageWidth, LEFT, RIGHT, accent);
+
   doc.end();
 }
 
