@@ -211,6 +211,38 @@ For EACH rep, extract from Fireflies meeting transcripts and summaries:
   return response.choices[0]?.message?.content || "Failed to generate scorecard.";
 }
 
+const REFINE_SYSTEM_PROMPT = `You are a report editor for a CEO named Abe. You receive an existing sales report and an instruction to modify it.
+
+RULES:
+- Return the COMPLETE updated report, not just the changed parts.
+- Preserve the original structure and formatting unless the instruction says to change it.
+- All facts must come from the original report. Do not invent new data.
+- You may reorganize, rewrite, add emphasis, remove sections, change tone, or restructure based on the instruction.
+- Use clear markdown formatting with headers, tables, bold, and lists as appropriate.
+- Format numbers with commas (e.g., $125,000).`;
+
+export async function refineReport(currentContent: string, instruction: string) {
+  const prompt = `Here is the current report:
+
+---
+${currentContent}
+---
+
+INSTRUCTION: ${instruction}
+
+Please produce the complete updated report incorporating the requested changes. Return the full report content in markdown.`;
+
+  return openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: REFINE_SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+    max_tokens: 4096,
+    stream: true,
+  });
+}
+
 export async function streamCustomReport(accountId: number, userPrompt: string) {
   const now = new Date();
   const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);

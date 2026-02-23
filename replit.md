@@ -74,6 +74,7 @@ client/src/
 - `/accounts/:accountId/settings` - Sales reps, goals
 
 ## Recent Changes
+- 2026-02-23: Report refinement with AI — inline chat panel on any report to iteratively refine content with AI; streaming SSE refine endpoint; save/revert refined changes; PATCH /reports/:id to update content
 - 2026-02-19: Close CRM integration — sync opportunities, calls, emails, notes, meetings; closeId/closeUrl on deals/activities/meetings; closeUserId on sales_reps; API key validation, connect/disconnect, manual sync; Close user mapping in Settings; scheduler includes Close sync
 - 2026-02-18: Multi-tenancy — accounts table, account_id on all data tables, API routes restructured to /api/accounts/:accountId/..., frontend AccountsPage + nested routing, scheduler iterates all accounts
 - 2026-02-18: Fixed LinkedIn message sync — Communications API channel type filter corrected from "LINKEDIN" to "LINKEDIN_MESSAGE"

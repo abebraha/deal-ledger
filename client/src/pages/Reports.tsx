@@ -4,14 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Mail, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, CalendarDays, BarChart3, Sparkles, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { FileText, Mail, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, CalendarDays, BarChart3, Sparkles, Trash2, Pencil, Send, X, Save, RotateCcw } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useApp } from "@/lib/context";
 import ReactMarkdown from "react-markdown";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Report {
   id: number;
@@ -161,11 +163,271 @@ const MarkdownRenderer = ({ content }: { content: string }) => (
   </ReactMarkdown>
 );
 
+interface RefineMessage {
+  role: "user" | "ai";
+  content: string;
+}
+
+function ReportRefinePanel({ report, base, onSaved, onClose }: {
+  report: Report;
+  base: string;
+  onSaved: () => void;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [messages, setMessages] = useState<RefineMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [refinedContent, setRefinedContent] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const currentContent = refinedContent ?? report.content;
+
+  const handleRefine = async () => {
+    if (!input.trim() || isStreaming) return;
+
+    const instruction = input;
+    setMessages(prev => [...prev, { role: "user", content: instruction }]);
+    setInput("");
+    setIsStreaming(true);
+    setMessages(prev => [...prev, { role: "ai", content: "" }]);
+
+    try {
+      const response = await fetch(`${base}/reports/${report.id}/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction, currentContent }),
+      });
+
+      if (!response.ok) throw new Error(`${response.status}: ${response.statusText}`);
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+
+          try {
+            const json = JSON.parse(trimmed.slice(6));
+            if (json.done) {
+              setRefinedContent(json.fullContent || fullContent);
+              setIsStreaming(false);
+              return;
+            }
+            if (json.content) {
+              fullContent += json.content;
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.role === "ai") {
+                  updated[updated.length - 1] = { ...last, content: last.content + json.content };
+                }
+                return updated;
+              });
+            }
+          } catch {}
+        }
+      }
+
+      if (fullContent) {
+        setRefinedContent(fullContent);
+      }
+    } catch (err: any) {
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === "ai" && !last.content) {
+          updated[updated.length - 1] = { ...last, content: "Sorry, something went wrong. Please try again." };
+        }
+        return updated;
+      });
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!refinedContent) return;
+    setIsSaving(true);
+    try {
+      await apiRequest("PATCH", `${base}/reports/${report.id}`, { content: refinedContent });
+      toast({ title: "Report Updated", description: "Your refined report has been saved." });
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRevert = () => {
+    setRefinedContent(null);
+    setMessages([]);
+    toast({ title: "Reverted", description: "Changes discarded. Showing original report." });
+  };
+
+  return (
+    <div className="border-t bg-muted/10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x">
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold flex items-center gap-1.5">
+              <FileText className="h-4 w-4" />
+              {refinedContent ? "Refined Preview" : "Current Report"}
+            </h4>
+            <div className="flex items-center gap-1">
+              {refinedContent && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRevert}
+                    className="text-xs"
+                    data-testid={`button-revert-${report.id}`}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    Revert
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="text-xs"
+                    data-testid={`button-save-refined-${report.id}`}
+                  >
+                    {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                    Save Changes
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="text-xs"
+                data-testid={`button-close-refine-${report.id}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          <ScrollArea className="h-[400px] pr-2">
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <MarkdownRenderer content={currentContent} />
+            </div>
+          </ScrollArea>
+        </div>
+
+        <div className="p-4 flex flex-col">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold flex items-center gap-1.5">
+              <Pencil className="h-4 w-4" />
+              Refine with AI
+            </h4>
+          </div>
+
+          <ScrollArea className="flex-1 h-[340px] mb-3 pr-2" ref={chatScrollRef}>
+            <div className="space-y-3">
+              {messages.length === 0 && (
+                <div className="text-sm text-muted-foreground py-8 text-center">
+                  Tell the AI how you'd like to change this report. For example:
+                  <div className="mt-3 space-y-1.5 text-xs">
+                    <p className="bg-muted/60 rounded px-3 py-1.5 inline-block">"Make it more concise"</p>
+                    <br />
+                    <p className="bg-muted/60 rounded px-3 py-1.5 inline-block">"Add a summary section at the top"</p>
+                    <br />
+                    <p className="bg-muted/60 rounded px-3 py-1.5 inline-block">"Remove the risk flags section"</p>
+                  </div>
+                </div>
+              )}
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`} data-testid={`refine-message-${report.id}-${i}`}>
+                  <div className={`max-w-[90%] rounded-lg px-3 py-2 text-sm ${
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/60 border"
+                  }`}>
+                    {m.role === "ai" ? (
+                      <div>
+                        {m.content ? (
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                            {m.content.length > 200 ? "Report updated. Review the changes in the preview panel." : m.content}
+                          </p>
+                        ) : (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
+                        {isStreaming && i === messages.length - 1 && m.content && (
+                          <Loader2 className="h-3 w-3 animate-spin inline-block ml-1" />
+                        )}
+                      </div>
+                    ) : (
+                      <p>{m.content}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              placeholder="How should the report change?"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleRefine()}
+              disabled={isStreaming}
+              className="flex-1"
+              data-testid={`input-refine-${report.id}`}
+            />
+            <Button
+              onClick={handleRefine}
+              size="icon"
+              disabled={isStreaming || !input.trim()}
+              data-testid={`button-send-refine-${report.id}`}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Reports() {
   const { accountId } = useApp();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [refiningId, setRefiningId] = useState<number | null>(null);
   const [weeklyMeetingIds, setWeeklyMeetingIds] = useState<number[]>([]);
   const [biweeklyMeetingIds, setBiweeklyMeetingIds] = useState<number[]>([]);
   const [customPrompt, setCustomPrompt] = useState("");
@@ -280,6 +542,20 @@ export function Reports() {
       default:
         return <Badge variant="outline" className="text-xs">{type}</Badge>;
     }
+  };
+
+  const handleStartRefine = (reportId: number) => {
+    setExpandedId(reportId);
+    setRefiningId(reportId);
+  };
+
+  const handleCloseRefine = () => {
+    setRefiningId(null);
+  };
+
+  const handleRefineSaved = () => {
+    setRefiningId(null);
+    qc.invalidateQueries({ queryKey: [base, "reports"] });
   };
 
   return (
@@ -410,10 +686,13 @@ export function Reports() {
           ) : (
             <div className="grid gap-4">
               {reports.map((report) => (
-                <Card key={report.id} className="shadow-sm hover:shadow-md transition-shadow" data-testid={`card-report-${report.id}`}>
+                <Card key={report.id} className={`shadow-sm hover:shadow-md transition-shadow ${refiningId === report.id ? "ring-2 ring-primary/30" : ""}`} data-testid={`card-report-${report.id}`}>
                   <div
                     className="flex flex-row items-center justify-between p-4 cursor-pointer"
-                    onClick={() => setExpandedId(expandedId === report.id ? null : report.id)}
+                    onClick={() => {
+                      if (refiningId === report.id) return;
+                      setExpandedId(expandedId === report.id ? null : report.id);
+                    }}
                   >
                     <div className="flex items-center gap-4">
                       <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
@@ -436,6 +715,16 @@ export function Reports() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); handleStartRefine(report.id); }}
+                        className="text-xs"
+                        data-testid={`button-refine-report-${report.id}`}
+                      >
+                        <Pencil className="h-4 w-4 mr-1.5" />
+                        Refine
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -467,19 +756,29 @@ export function Reports() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                      {expandedId === report.id ? (
-                        <ChevronUp className="h-4 w-4 text-muted-foreground ml-1" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground ml-1" />
+                      {refiningId !== report.id && (
+                        expandedId === report.id ? (
+                          <ChevronUp className="h-4 w-4 text-muted-foreground ml-1" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground ml-1" />
+                        )
                       )}
                     </div>
                   </div>
-                  {expandedId === report.id && (
+                  {expandedId === report.id && refiningId !== report.id && (
                     <CardContent className="pt-0 border-t">
                       <div className="prose prose-sm max-w-none mt-4 dark:prose-invert" data-testid={`text-report-content-${report.id}`}>
                         <MarkdownRenderer content={report.content} />
                       </div>
                     </CardContent>
+                  )}
+                  {refiningId === report.id && (
+                    <ReportRefinePanel
+                      report={report}
+                      base={base}
+                      onSaved={handleRefineSaved}
+                      onClose={handleCloseRefine}
+                    />
                   )}
                 </Card>
               ))}

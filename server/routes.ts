@@ -494,6 +494,58 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/accounts/:accountId/reports/:id", async (req, res) => {
+    try {
+      const { content, title } = req.body;
+      if (!content) return res.status(400).json({ error: "Content is required" });
+      const updated = await storage.updateReportContent(getAccountId(req), parseInt(req.params.id), content, title);
+      if (!updated) return res.status(404).json({ error: "Report not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounts/:accountId/reports/:id/refine", async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const reportId = parseInt(req.params.id);
+      const { instruction, currentContent } = req.body;
+      if (!instruction) return res.status(400).json({ error: "Instruction is required" });
+
+      const report = await storage.getReport(accountId, reportId);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+
+      const contentToRefine = currentContent || report.content;
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const { refineReport } = await import("./services/ai-reports");
+      const stream = await refineReport(contentToRefine, instruction);
+      let fullResponse = "";
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullResponse += content;
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true, fullContent: fullResponse })}\n\n`);
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+      }
+    }
+  });
+
   app.get("/api/accounts/:accountId/reports/:id/pdf", async (req, res) => {
     try {
       const report = await storage.getReport(getAccountId(req), parseInt(req.params.id));
