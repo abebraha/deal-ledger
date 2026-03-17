@@ -93,4 +93,5 @@ client/src/
 - 2026-02-23: Rep matching fixed — exact name match instead of substring; activity types normalized
 - 2026-02-18: PDF report generation (pdfkit), per-rep metrics breakdown
 - 2026-02-18: Connection flow with API key validation, sync timestamp tracking
+- 2026-03-17: Weekly reports now mine Fireflies transcripts for non-CRM activities (conferences, events, training, networking, travel, speaking engagements, etc.) and surface them in each rep's section; transcript snippet size increased to 10K chars; max_tokens bumped to 6144
 - 2026-02-17: Initial full build

@@ -17,7 +17,8 @@ RULES:
 - Separate each rep's section clearly.
 - Format numbers with commas (e.g., $125,000).
 - Write in a conversational but professional tone — like thorough briefing notes from a trusted assistant.
-- CRITICAL: Activity counts (calls, emails, LinkedIn messages) MUST exactly match the numbers provided in the structured data. Do not round, estimate, or change these numbers.`;
+- CRITICAL: Activity counts (calls, emails, LinkedIn messages) MUST exactly match the numbers provided in the structured data. Do not round, estimate, or change these numbers.
+- CRITICAL: Carefully mine Fireflies meeting transcripts and summaries for NON-CRM activities — conferences, trade shows, networking events, training, internal planning sessions, travel, speaking engagements, etc. These activities won't show up in CRM data but are mentioned in conversations. Always surface them in the relevant rep's section.`;
 
 const SCORECARD_SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. You generate clear, data-driven scorecard reports.
 
@@ -68,7 +69,7 @@ export async function generateWeeklyEmail(accountId: number, selectedMeetingIds?
     summary: m.summary,
     outline: m.outline,
     keywords: m.keywords,
-    transcriptSnippet: m.transcript ? m.transcript.substring(0, 6000) : null,
+    transcriptSnippet: m.transcript ? m.transcript.substring(0, 10000) : null,
   }));
 
   const repSummaries = metrics.repNames.map(rep => {
@@ -116,7 +117,7 @@ ${(rd.openDeals || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.compan
 STRUCTURED ACTIVITY DATA (these numbers are exact — use them as-is):
 ${repSummaries}
 
-SELECTED MEETINGS (${meetingsData.length}):
+SELECTED FIREFLIES MEETINGS/TRANSCRIPTS (${meetingsData.length}):
 ${meetingsData.length > 0 ? JSON.stringify(meetingsData, null, 2) : "No meetings selected."}
 
 INSTRUCTIONS — follow this format exactly:
@@ -127,7 +128,7 @@ Then for EACH rep (${metrics.repNames.join(", ")}), write a section like this:
 
 ## [Rep Name]
 
-Start with a quick one-line summary of their week (e.g., "Four broker meetings this week plus a demo build.").
+Start with a quick one-line summary of their week (e.g., "Four broker meetings this week plus a demo build and a conference.").
 
 Then list each key contact, deal, or topic discussed — one per block, with short bullet points underneath. Like this:
 
@@ -138,6 +139,25 @@ Why it matters — one line.
 **[Deal or Topic Name]**
 What happened. One or two lines max.
 What it means or what's next.
+
+IMPORTANT — NON-CRM ACTIVITIES FROM TRANSCRIPTS:
+Carefully read through ALL Fireflies meeting transcripts and summaries above. Look for any mentions of activities that would NOT appear in CRM data, such as:
+- Conferences, trade shows, expos, or industry events attended
+- Networking events, dinners, or social events with prospects/clients
+- Training sessions, certifications, or professional development
+- Internal strategy sessions or planning meetings
+- Product demos or presentations given outside of tracked deals
+- Travel for client visits not logged as CRM activities
+- Speaking engagements or panel participations
+- Any other notable activity a rep mentions doing or planning
+
+When you find these, include them in that rep's section as a separate block, like:
+
+**[Event/Activity Name]**
+What the rep did or plans to do. Who they met or will meet.
+Why it matters for the business.
+
+These non-CRM activities are important context for Abe — they show what reps are doing beyond just calls and emails. Always include them when found in the transcripts.
 
 End each rep section with an **"Outreach This Week"** summary that EXACTLY matches the structured data above:
 - Calls: [exact number from data]
@@ -155,7 +175,8 @@ STYLE RULES:
 - Include specific quotes or notable details from transcripts when they add value.
 - For each contact, explain: who they are, what was discussed, what the opportunity is, and what the next step is.
 - Tone: direct, informal, like briefing notes from a trusted assistant.
-- The report should give Abe enough detail to feel fully informed without reading the transcripts himself.`;
+- The report should give Abe enough detail to feel fully informed without reading the transcripts himself.
+- Surface non-CRM activities (conferences, events, etc.) from transcripts — these are valuable context Abe needs.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -163,7 +184,7 @@ STYLE RULES:
       { role: "system", content: WEEKLY_SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
-    max_tokens: 4096,
+    max_tokens: 6144,
   });
 
   return response.choices[0]?.message?.content || "Failed to generate report.";
