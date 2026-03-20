@@ -53,6 +53,11 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
     monthlyRevenueGoal,
   };
 
+  const nowIso = new Date().toISOString();
+
+  // All upcoming meetings (startTime in the future)
+  const allUpcomingMeetings = allMeetings.filter(m => m.startTime && m.startTime > nowIso);
+
   const byRep: Record<string, any> = {};
   for (const rep of repNames) {
     const repDeals = allDeals.filter(d => matchesRep(d.owner, rep));
@@ -65,13 +70,33 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
           return cd >= periodStart && (!periodEnd || cd <= periodEnd);
         })
       : repAllWon;
+
+    // Deals touched/updated this period (by lastActivityDate within the period)
+    const repDealsUpdatedThisPeriod = periodStart
+      ? repOpen.filter(d => {
+          const lad = d.lastActivityDate;
+          if (!lad) return false;
+          return lad >= periodStart && (!periodEnd || lad <= periodEnd);
+        })
+      : repOpen;
+
     const repActivities = periodActivities.filter(a => matchesRep(a.owner, rep));
     const repMeetings = periodMeetings.filter(m => matchesRep(m.owner, rep));
+    const repUpcomingMeetings = allUpcomingMeetings.filter(m => matchesRep(m.owner, rep));
 
     const activityCounts = countByTypeNormalized(repActivities);
 
     byRep[rep] = {
       openDeals: repOpen.map(d => ({ name: d.name, company: d.companyName, amount: d.amount, stage: d.stage, probability: d.probability, closeDate: d.closeDate })),
+      dealsUpdatedThisPeriod: repDealsUpdatedThisPeriod.map(d => ({
+        name: d.name,
+        company: d.companyName,
+        amount: d.amount,
+        stage: d.stage,
+        probability: d.probability,
+        closeDate: d.closeDate,
+        lastActivityDate: d.lastActivityDate,
+      })),
       totalOpenPipeline: repOpen.reduce((sum, d) => sum + (d.amount || 0), 0),
       weightedPipeline: repOpen.reduce((sum, d) => sum + (d.amount || 0) * (d.probability || 0) / 100, 0),
       dealsWonAllTime: repAllWon.length,
@@ -111,6 +136,13 @@ export async function computeMetricsForReport(accountId: number, periodStart?: s
         startTime: m.startTime,
         endTime: m.endTime,
         outcome: m.outcome,
+        contactName: m.contactName,
+        companyName: m.companyName,
+        attendees: m.attendees,
+      })),
+      upcomingMeetings: repUpcomingMeetings.slice(0, 10).map(m => ({
+        title: m.title,
+        startTime: m.startTime,
         contactName: m.contactName,
         companyName: m.companyName,
         attendees: m.attendees,

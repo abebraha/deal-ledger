@@ -84,14 +84,22 @@ export async function generateWeeklyEmail(accountId: number, selectedMeetingIds?
       ? items.map((m: any) => `  - "${m.title}" with ${m.contactName || 'Unknown'}${m.companyName ? ` (${m.companyName})` : ''}${m.attendees ? ` [attendees: ${m.attendees}]` : ''} — ${m.startTime || ''} — outcome: ${m.outcome || 'N/A'}`).join('\n')
       : '  (none)';
 
+    const formatUpcomingMeetings = (items: any[]) => items.length > 0
+      ? items.map((m: any) => `  - "${m.title || 'Untitled'}" with ${m.contactName || 'Unknown'}${m.companyName ? ` (${m.companyName})` : ''} — ${m.startTime ? new Date(m.startTime).toLocaleDateString() : 'TBD'}${m.attendees ? ` [${m.attendees}]` : ''}`).join('\n')
+      : '  (none scheduled)';
+
+    const formatDealsList = (items: any[]) => items.length > 0
+      ? items.map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — Stage: ${d.stage} — ${d.probability || 0}% — Close: ${d.closeDate || 'TBD'} — Last activity: ${d.lastActivityDate || 'N/A'}`).join('\n')
+      : '  (none)';
+
     return `### ${rep}
 
-**Activity Counts:**
+**Activity Counts (EXACT — use as-is):**
 - Calls: ${rd.calls}
 - Emails: ${rd.emails}
 - LinkedIn Messages: ${rd.linkedinMessages}
 - Total Outbound: ${rd.totalOutbound} (goal: ${rd.weeklyOutboundGoal})
-- Meetings Booked: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
+- Meetings Logged in CRM: ${rd.meetingsHeld} (goal: ${rd.weeklyMeetingsGoal})
 
 **Call Details:**
 ${formatDetails(rd.callDetails || [])}
@@ -102,13 +110,18 @@ ${formatDetails(rd.emailDetails || [])}
 **LinkedIn Message Details:**
 ${formatDetails(rd.linkedinDetails || [])}
 
-**Meeting Details (with contacts and companies):**
+**CRM Meetings This Week (logged in HubSpot):**
 ${formatMeetings(rd.meetingDetails || [])}
 
-**Open Deals:**
-${(rd.openDeals || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — Stage: ${d.stage} — Probability: ${d.probability || 0}% — Close: ${d.closeDate || 'TBD'}`).join('\n') || '  (none)'}
+**UPCOMING MEETINGS (scheduled in HubSpot — future dates):**
+${formatUpcomingMeetings(rd.upcomingMeetings || [])}
 
-**Pipeline:** $${(rd.totalOpenPipeline || 0).toLocaleString()} (${rd.openDeals?.length || 0} deals) | Weighted: $${(rd.weightedPipeline || 0).toLocaleString()}
+**DEALS ACTIVE THIS WEEK (had CRM activity in the period):**
+${formatDealsList(rd.dealsUpdatedThisPeriod || [])}
+
+**All Open Deals:**
+${(rd.openDeals || []).map((d: any) => `  - ${d.name}${d.company ? ` (${d.company})` : ''} — $${(d.amount || 0).toLocaleString()} — Stage: ${d.stage} — ${d.probability || 0}% — Close: ${d.closeDate || 'TBD'}`).join('\n') || '  (none)'}
+
 **Deals Won This Period:** ${rd.dealsWonThisPeriod} ($${(rd.revenueWonThisPeriod || 0).toLocaleString()})`;
   }).join('\n\n');
 
@@ -124,59 +137,72 @@ INSTRUCTIONS — follow this format exactly:
 
 Start with one line: "Here's this week's update."
 
-Then for EACH rep (${metrics.repNames.join(", ")}), write a section like this:
+Then for EACH rep (${metrics.repNames.join(", ")}), write a section with these parts IN ORDER:
 
 ## [Rep Name]
 
-Start with a quick one-line summary of their week (e.g., "Four broker meetings this week plus a demo build and a conference.").
+Start with a quick one-line summary of their week — include any key wins, conferences, or notable events.
 
-Then list each key contact, deal, or topic discussed — one per block, with short bullet points underneath. Like this:
+---
 
-**[Contact Name] – [Company].**
-Brief context about the relationship or opportunity.
-Why it matters — one line.
+**DEALS ACTIVE THIS WEEK** — Use the "DEALS ACTIVE THIS WEEK" list from the structured data. For EVERY deal listed there, write a block like:
 
-**[Deal or Topic Name]**
-What happened. One or two lines max.
-What it means or what's next.
+**[Deal Name] – [Company]** ($[amount] | [Stage])
+What's happening with this deal based on calls/emails/meetings or transcript context.
+What the next step is. When they expect to close.
 
-IMPORTANT — NON-CRM ACTIVITIES FROM TRANSCRIPTS:
-Carefully read through ALL Fireflies meeting transcripts and summaries above. Look for any mentions of activities that would NOT appear in CRM data, such as:
-- Conferences, trade shows, expos, or industry events attended
-- Networking events, dinners, or social events with prospects/clients
-- Training sessions, certifications, or professional development
-- Internal strategy sessions or planning meetings
-- Product demos or presentations given outside of tracked deals
-- Travel for client visits not logged as CRM activities
+If a deal had activity this week but you have transcript context about it, weave in those details.
+
+---
+
+**UPCOMING MEETINGS** — Use the "UPCOMING MEETINGS" list from the structured data. For EVERY upcoming meeting listed, write a block like:
+
+**Upcoming: [Meeting Title] with [Contact] ([Company])** — [Date]
+Brief context about what this meeting is for or what to prepare.
+
+---
+
+**NON-CRM ACTIVITIES FROM TRANSCRIPTS** — Read through ALL Fireflies transcripts and summaries. Look for anything NOT in the CRM data, such as:
+- Conferences, trade shows, expos, or industry events attended or planned
+- Networking events, dinners, or social events
+- Training sessions or professional development
 - Speaking engagements or panel participations
-- Any other notable activity a rep mentions doing or planning
+- Internal strategy or planning sessions
+- Travel for client visits not logged in CRM
+- Any other notable activity mentioned in conversation
 
-When you find these, include them in that rep's section as a separate block, like:
+For each one found, write a block:
 
 **[Event/Activity Name]**
-What the rep did or plans to do. Who they met or will meet.
-Why it matters for the business.
+What happened or what's planned. Who was/will be there.
+Why it matters.
 
-These non-CRM activities are important context for Abe — they show what reps are doing beyond just calls and emails. Always include them when found in the transcripts.
+---
 
-End each rep section with an **"Outreach This Week"** summary that EXACTLY matches the structured data above:
+**FIREFLIES GAPS** — Compare what's discussed in the Fireflies transcripts against the CRM data. If a meeting, deal, or contact is mentioned in a transcript but NOT logged in HubSpot, flag it:
+
+**Not in CRM: [Contact/Company/Topic mentioned in transcript]**
+Briefly describe what was discussed. Note that it's not logged in HubSpot.
+
+---
+
+End each rep section with an **"Outreach This Week"** summary that EXACTLY matches the structured data:
 - Calls: [exact number from data]
 - Emails: [exact number from data]
 - LinkedIn Messages: [exact number from data]
 - Total Outbound: [exact number from data] vs goal of [exact goal from data]
-- Meetings: [exact number from data] vs goal of [exact goal from data]
+- Meetings Logged in CRM: [exact number from data] vs goal of [exact goal from data]
+
+---
 
 STYLE RULES:
 - Be detailed but scannable. Include specifics — names, amounts, next steps, context.
-- No headers like "Meeting Recap" or "Action Items" — just flow naturally per rep.
-- No pipeline numbers or KPI tables — that's for the biweekly scorecard.
-- Bold contact/company names. Use line breaks between points, not nested bullets.
-- If a deal has a dollar amount or size metric (lives, caregivers, etc.), include it.
-- Include specific quotes or notable details from transcripts when they add value.
-- For each contact, explain: who they are, what was discussed, what the opportunity is, and what the next step is.
+- Bold all contact names, company names, and deal names.
+- If a deal has a dollar amount, always include it.
+- Include specific details from transcripts when they add context.
 - Tone: direct, informal, like briefing notes from a trusted assistant.
-- The report should give Abe enough detail to feel fully informed without reading the transcripts himself.
-- Surface non-CRM activities (conferences, events, etc.) from transcripts — these are valuable context Abe needs.`;
+- The report should give Abe everything he needs without reading transcripts himself.
+- ALWAYS include every deal from "DEALS ACTIVE THIS WEEK" and every meeting from "UPCOMING MEETINGS" — do not skip any.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
