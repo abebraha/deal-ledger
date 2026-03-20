@@ -18,7 +18,7 @@ RULES:
 - Format numbers with commas (e.g., $125,000).
 - Write in a conversational but professional tone — like thorough briefing notes from a trusted assistant.
 - CRITICAL: Activity counts (calls, emails, LinkedIn messages) MUST exactly match the numbers provided in the structured data. Do not round, estimate, or change these numbers.
-- CRITICAL: Carefully mine Fireflies meeting transcripts and summaries for NON-CRM activities — conferences, trade shows, networking events, training, internal planning sessions, travel, speaking engagements, etc. These activities won't show up in CRM data but are mentioned in conversations. Always surface them in the relevant rep's section.`;
+- CRITICAL: Carefully mine Fireflies meeting transcripts and summaries for anything significant that consumed a rep's time or attention that would NOT appear in CRM data — conferences, events, travel, internal meetings, proposals, partnerships, PTO, or any other factor that explains their week. The goal is honest context for Abe: why did a rep hit or miss their numbers? Always surface these in the relevant rep's section.`;
 
 const SCORECARD_SYSTEM_PROMPT = `You are a sales operations analyst for a CEO named Abe. You generate clear, data-driven scorecard reports.
 
@@ -162,20 +162,25 @@ Brief context about what this meeting is for or what to prepare.
 
 ---
 
-**NON-CRM ACTIVITIES FROM TRANSCRIPTS** — Read through ALL Fireflies transcripts and summaries. Look for anything NOT in the CRM data, such as:
+**OTHER SIGNIFICANT ACTIVITIES FROM TRANSCRIPTS** — Read through ALL Fireflies transcripts and summaries. Look for anything significant that consumed a rep's time or attention this week that would NOT show up as a logged call, email, or meeting in the CRM. The goal is to give Abe honest context about why a rep may or may not have hit their numbers. This includes but is not limited to:
 - Conferences, trade shows, expos, or industry events attended or planned
-- Networking events, dinners, or social events
-- Training sessions or professional development
-- Speaking engagements or panel participations
-- Internal strategy or planning sessions
-- Travel for client visits not logged in CRM
-- Any other notable activity mentioned in conversation
+- Networking events, dinners, or social events with prospects or partners
+- Training sessions, certifications, or professional development
+- Speaking engagements, panels, or presentations
+- Internal strategy, planning, or team meetings that took significant time
+- Travel for client visits or events not logged in CRM
+- Proposal or RFP work being done outside of normal CRM activities
+- Marketing or partnership efforts being pursued
+- Onboarding new tools, processes, or clients that took rep time
+- Any significant project, initiative, or distraction mentioned in conversation
+- Health issues, PTO, or personal circumstances mentioned that affected availability
+- Any other reason a rep's outreach numbers might be lower than expected
 
 For each one found, write a block:
 
-**[Event/Activity Name]**
-What happened or what's planned. Who was/will be there.
-Why it matters.
+**[Activity/Event Name]**
+What happened or what's planned. Briefly explain how it affected the rep's week.
+Why Abe should know about it.
 
 ---
 
